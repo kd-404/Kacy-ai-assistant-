@@ -1,0 +1,20 @@
+# azd project file — run `azd up` from the repo root once this is filled in.
+# Scaffolded, not yet provisioned. See docs/architecture.md section 0 before deploying
+# on a student subscription (quota/region policy commonly blocks Azure OpenAI).
+name: kacy
+metadata:
+  template: kacy-company-ai@0.1.0
+
+infra:
+  provider: bicep
+  path: infra
+
+services:
+  backend:
+    project: ./backend
+    language: python
+    host: containerapp
+  frontend:
+    project: ./frontend
+    language: js
+    host: staticwebapp
