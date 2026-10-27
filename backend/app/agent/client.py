@@ -18,10 +18,13 @@ from __future__ import annotations
 import os
 
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import PromptAgentDefinition
+from azure.ai.projects.models import FunctionTool, PromptAgentDefinition
 from azure.identity import DefaultAzureCredential
 
 from app.agent.system_prompt import SYSTEM_PROMPT
+from app.tools.registry import TOOL_SPECS, dispatch
+
+MAX_TOOL_ROUNDS = 5  # safety stop so a confused model can't loop forever
 
 
 class KacyAgent:
@@ -54,23 +57,55 @@ class KacyAgent:
         """
         agent = self._ensure_project().agents.create_version(
             agent_name=self._agent_name,
-            definition=PromptAgentDefinition(model=self._model, instructions=SYSTEM_PROMPT),
+            definition=PromptAgentDefinition(
+                model=self._model,
+                instructions=SYSTEM_PROMPT,
+                tools=[
+                    FunctionTool(
+                        name=spec["name"],
+                        description=spec["description"],
+                        parameters=spec["parameters"],
+                        strict=True,
+                    )
+                    for spec in TOOL_SPECS
+                ],
+            ),
         )
         return f"{agent.name} v{agent.version}"
 
-    def run(self, user_message: str, thread_id: str | None = None) -> dict:
+    def run(self, user_message: str, user_email: str, thread_id: str | None = None) -> dict:
         """
         Send one message, return the agent's reply plus the conversation id so
         the caller (FastAPI route) can keep the conversation going.
+
+        If the model asks for tools, we run them here as `user_email` (the
+        identity the backend verified, not anything the model supplied) and hand
+        the results back until the model produces a final answer.
         """
         openai = self._ensure_openai()
 
         conversation_id = thread_id or openai.conversations.create().id
         response = openai.responses.create(conversation=conversation_id, input=user_message)
 
+        access_denied = False
+        for _ in range(MAX_TOOL_ROUNDS):
+            calls = [item for item in response.output if item.type == "function_call"]
+            if not calls:
+                break
+
+            outputs = []
+            for call in calls:
+                output, denied = dispatch(call.name, call.arguments, user_email)
+                access_denied = access_denied or denied
+                outputs.append(
+                    {"type": "function_call_output", "call_id": call.call_id, "output": output}
+                )
+            response = openai.responses.create(conversation=conversation_id, input=outputs)
+
         return {
             "thread_id": conversation_id,
             "run_id": response.id,
             "reply": response.output_text,
             "status": response.status,
+            "access_denied": access_denied,
         }

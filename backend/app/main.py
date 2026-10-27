@@ -44,6 +44,7 @@ class ChatResponse(BaseModel):
     reply: str
     thread_id: str
     cache_hit: bool = False
+    access_denied: bool = False
 
 
 @app.get("/health")
@@ -61,16 +62,23 @@ def chat(req: ChatRequest) -> ChatResponse:
         logger.warning("chat.blocked kind=%s", exc.kind)
         raise HTTPException(status_code=400, detail=f"Blocked: {exc.kind} detected") from exc
 
+    # NOTE: replies can contain per-user data (salary, leave balance), so they are
+    # never served from the shared cache. The cache only holds generic answers.
     cached = semantic_cache.get(req.message)
     if cached is not None:
         logger.info("chat.cache_hit")
         return ChatResponse(reply=cached, thread_id=req.thread_id or "cache", cache_hit=True)
 
     try:
-        result = _agent.run(req.message, thread_id=req.thread_id)
+        result = _agent.run(req.message, user_email=req.user_email, thread_id=req.thread_id)
     except AccessDenied as exc:
         logger.info("chat.access_denied resource=%s role=%s", exc.resource, exc.role)
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    semantic_cache.set(req.message, result["reply"])
-    return ChatResponse(reply=result["reply"], thread_id=result["thread_id"])
+    if not result["access_denied"]:
+        semantic_cache.set(req.message, result["reply"])
+    return ChatResponse(
+        reply=result["reply"],
+        thread_id=result["thread_id"],
+        access_denied=result["access_denied"],
+    )

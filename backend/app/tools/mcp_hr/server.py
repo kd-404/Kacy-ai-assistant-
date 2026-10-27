@@ -25,6 +25,8 @@ _store.add({"employee": "dev@kacy-demo.test", "leave_balance_days": 25, "salary"
 
 def get_leave_balance(requesting_user: str, target_user: str | None = None) -> dict:
     target_user = target_user or requesting_user
+    if target_user != requesting_user and role_for(requesting_user) not in {Role.MANAGER, Role.EXEC}:
+        raise AccessDenied(resource=f"leave:{target_user}", role=role_for(requesting_user))
     record = next((r for r in _store.all() if r["employee"] == target_user), None)
     if record is None:
         return {"error": "no such employee"}
