@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from typing import Callable
 
+from app.guardrails.pii_redaction import redact
 from app.identity.rbac import AccessDenied
 from app.tools.mcp_hr.server import get_leave_balance, get_salary
 
@@ -80,6 +81,12 @@ def dispatch(name: str, arguments_json: str, user_email: str) -> tuple[str, bool
     args.pop("requesting_user", None)
 
     try:
-        return json.dumps(handler(requesting_user=user_email, **args)), False
+        result = handler(requesting_user=user_email, **args)
     except AccessDenied as exc:
         return json.dumps({"error": "access_denied", "message": str(exc)}), True
+
+    # Defense in depth: scrub any free-text field before it goes back to the
+    # model, regardless of which tool produced it. Numbers/bools pass through
+    # untouched -- redaction only makes sense on text.
+    scrubbed = {k: (redact(v) if isinstance(v, str) else v) for k, v in result.items()}
+    return json.dumps(scrubbed), False
