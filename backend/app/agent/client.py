@@ -20,11 +20,38 @@ import os
 from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import FunctionTool, PromptAgentDefinition
 from azure.identity import DefaultAzureCredential
+from openai import BadRequestError
 
 from app.agent.system_prompt import SYSTEM_PROMPT
 from app.tools.registry import TOOL_SPECS, dispatch
 
 MAX_TOOL_ROUNDS = 5  # safety stop so a confused model can't loop forever
+
+
+class ContentFiltered(Exception):
+    """
+    Azure OpenAI's built-in content filter (on the model deployment itself, separate
+    from our Prompt Shields check) refused the request. `flagged` lists which
+    filter categories fired, e.g. {"jailbreak": {"filtered": True, "detected": True}}.
+    """
+
+    def __init__(self, flagged: dict, raw: object):
+        self.flagged = flagged
+        self.raw = raw
+        super().__init__(f"Azure OpenAI content filter blocked the request: {list(flagged) or 'unknown'}")
+
+
+def _respond(openai, **kwargs):
+    """responses.create, but a content-filter rejection becomes a ContentFiltered with details."""
+    try:
+        return openai.responses.create(**kwargs)
+    except BadRequestError as exc:
+        body = exc.body if isinstance(exc.body, dict) else {}
+        if body.get("code") != "content_filter" and "content management policy" not in str(exc):
+            raise
+        result = (body.get("innererror") or {}).get("content_filter_result") or {}
+        flagged = {k: v for k, v in result.items() if isinstance(v, dict) and (v.get("filtered") or v.get("detected"))}
+        raise ContentFiltered(flagged, exc.body) from exc
 
 
 class KacyAgent:
@@ -85,7 +112,7 @@ class KacyAgent:
         openai = self._ensure_openai()
 
         conversation_id = thread_id or openai.conversations.create().id
-        response = openai.responses.create(conversation=conversation_id, input=user_message)
+        response = _respond(openai, conversation=conversation_id, input=user_message)
 
         access_denied = False
         for _ in range(MAX_TOOL_ROUNDS):
@@ -100,7 +127,7 @@ class KacyAgent:
                 outputs.append(
                     {"type": "function_call_output", "call_id": call.call_id, "output": output}
                 )
-            response = openai.responses.create(conversation=conversation_id, input=outputs)
+            response = _respond(openai, conversation=conversation_id, input=outputs)
 
         return {
             "thread_id": conversation_id,

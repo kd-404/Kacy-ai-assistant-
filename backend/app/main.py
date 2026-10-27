@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.agent.client import KacyAgent
+from app.agent.client import ContentFiltered, KacyAgent
 from app.cost import semantic_cache
 from app.guardrails.prompt_shields import PromptInjectionDetected, check_user_message
 from app.identity.rbac import AccessDenied
@@ -74,6 +74,14 @@ def chat(req: ChatRequest) -> ChatResponse:
     except AccessDenied as exc:
         logger.info("chat.access_denied resource=%s role=%s", exc.resource, exc.role)
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ContentFiltered as exc:
+        # Full Azure error body goes to the server log so we can see exactly which
+        # filter fired; the caller gets a clean 400 instead of a 500 crash.
+        logger.warning("chat.content_filtered flagged=%s raw=%s", exc.flagged, exc.raw)
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "content_filtered", "flagged": exc.flagged},
+        ) from exc
 
     if not result["access_denied"]:
         semantic_cache.set(req.message, result["reply"])
