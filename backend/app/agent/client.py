@@ -123,6 +123,7 @@ class KacyAgent:
         response = _respond(openai, conversation=conversation_id, input=user_message)
 
         access_denied = False
+        tools_called: list[str] = []
         for _ in range(MAX_TOOL_ROUNDS):
             calls = [item for item in response.output if item.type == "function_call"]
             if not calls:
@@ -131,6 +132,7 @@ class KacyAgent:
             outputs = []
             for call in calls:
                 output, denied = dispatch(call.name, call.arguments, user_email)
+                tools_called.append(call.name)
                 access_denied = access_denied or denied
                 outputs.append(
                     {"type": "function_call_output", "call_id": call.call_id, "output": output}
@@ -143,4 +145,5 @@ class KacyAgent:
             "reply": response.output_text,
             "status": response.status,
             "access_denied": access_denied,
+            "tools_called": tools_called,
         }

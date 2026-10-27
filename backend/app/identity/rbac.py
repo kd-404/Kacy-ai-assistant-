@@ -9,6 +9,7 @@ salary -> access denied" scene without needing a real Entra tenant yet.
 """
 from __future__ import annotations
 
+import os
 from enum import Enum
 
 
@@ -35,10 +36,31 @@ class AccessDenied(Exception):
         super().__init__(f"{role.value} is not authorized to access {resource}")
 
 
+def _configured_users() -> dict[str, Role]:
+    """
+    Real accounts (people who sign in with Google) and their roles, from .env:
+        KACY_USER_ROLES=you@gmail.com=exec,friend@gmail.com=intern
+    Only accounts listed here (or the demo accounts) can use Kacy at all, the
+    way a company only lets in employees that IT has provisioned.
+    """
+    users: dict[str, Role] = {}
+    for pair in os.environ.get("KACY_USER_ROLES", "").split(","):
+        if "=" in pair:
+            email, role = pair.split("=", 1)
+            users[email.strip().lower()] = Role(role.strip().lower())
+    return users
+
+
+def is_demo_user(user_email: str) -> bool:
+    return user_email.lower() in DEMO_USERS
+
+
 def role_for(user_email: str) -> Role:
-    if user_email not in DEMO_USERS:
+    users = {**DEMO_USERS, **_configured_users()}
+    email = user_email.lower()
+    if email not in users:
         raise AccessDenied("unknown user", Role.INTERN)
-    return DEMO_USERS[user_email]
+    return users[email]
 
 
 def require_role(user_email: str, resource: str, allowed: set[Role]) -> None:

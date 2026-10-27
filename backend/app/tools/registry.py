@@ -18,6 +18,7 @@ from typing import Callable
 
 from app.guardrails.pii_redaction import redact
 from app.identity.rbac import AccessDenied
+from app.tools.mcp_email.server import draft_email
 from app.tools.mcp_hr.server import get_leave_balance, get_salary
 
 logger = logging.getLogger("kacy.tools")
@@ -59,10 +60,32 @@ TOOL_SPECS: list[dict] = [
     },
 ]
 
+TOOL_SPECS.append({
+    # There is deliberately no "send_email" tool. The model can only draft;
+    # sending happens when the user presses Send (backend route, not the model).
+    "name": "draft_email",
+    "description": (
+        "Draft an email for the user to review. This does NOT send it: the user "
+        "sees the draft with a Send button and decides. Use for any request to "
+        "write, send, or reply to an email."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "to": {"type": "string", "description": "Recipient email address."},
+            "subject": {"type": "string", "description": "Subject line."},
+            "body": {"type": "string", "description": "Plain-text body of the email."},
+        },
+        "required": ["to", "subject", "body"],
+        "additionalProperties": False,
+    },
+})
+
 # name -> function taking (requesting_user, **model_args)
 _HANDLERS: dict[str, Callable[..., dict]] = {
     "get_leave_balance": get_leave_balance,
     "get_salary": get_salary,
+    "draft_email": draft_email,
 }
 
 

@@ -33,11 +33,13 @@ GROUNDING_RULE = (
 )
 
 ACTION_RULE = (
-    "For any tool call that writes, sends, or changes something (email, "
-    "calendar invite, leave request, IT ticket, approval decision), produce "
-    "a draft/preview first and call the tool only after the user approves "
-    "it. Read-only lookups (checking a policy, checking ticket status) do "
-    "not need approval."
+    "To send an email, call draft_email. That only creates a draft: the user "
+    "reviews it and presses Send in the app themselves. After drafting, show "
+    "the user the recipient, subject and body, and say it is waiting for their "
+    "approval. Never say an email was sent. For other actions that change "
+    "something (calendar invite, leave request, IT ticket, approval decision), "
+    "describe what you would do and ask for confirmation first. Read-only "
+    "lookups (checking a policy, a leave balance) do not need approval."
 )
 
 SYSTEM_PROMPT = "\n\n".join([

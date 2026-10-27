@@ -1,26 +1,44 @@
 """
-Email tool — draft & send. The first of the four new agentic actions.
-`draft_email` never sends anything; `send_email` only ever gets called by the
-backend after the user approves the draft in the UI's activity pane.
+Email tool: drafts only.
+
+The agent can call `draft_email`. It has no tool that sends. A draft sits in
+`pending_approval` until its owner presses Send in the app, which hits the
+backend's /drafts/{id}/send route; that route (not the model) does the send.
+So no prompt, however clever, can make Kacy send an email on its own.
 """
 from __future__ import annotations
 
 from app.tools.base import ToolStore
 
 _drafts = ToolStore()
-_sent = ToolStore()
 
 
 def draft_email(requesting_user: str, to: str, subject: str, body: str) -> dict:
-    return _drafts.add({
-        "from": requesting_user, "to": to, "subject": subject, "body": body, "status": "draft",
+    draft = _drafts.add({
+        "owner": requesting_user,
+        "to": to,
+        "subject": subject,
+        "body": body,
+        "status": "pending_approval",
     })
+    # What the model gets back: just enough to tell the user what happens next.
+    # It already knows what it wrote, so the content isn't echoed back.
+    return {
+        "draft_id": draft["id"],
+        "status": "pending_approval",
+        "note": "Draft shown to the user with a Send button. It has NOT been sent.",
+    }
 
 
-def send_email(draft_id: int) -> dict:
-    """Only call this after explicit user approval of the draft."""
+def pending_for(owner: str) -> list[dict]:
+    return [d for d in _drafts.all() if d["owner"] == owner and d["status"] == "pending_approval"]
+
+
+def get_draft(draft_id: int) -> dict | None:
+    return _drafts.get(draft_id)
+
+
+def mark(draft_id: int, status: str, **extra) -> None:
     draft = _drafts.get(draft_id)
-    if draft is None:
-        return {"error": "no such draft"}
-    sent = _sent.add({**draft, "status": "sent"})
-    return sent
+    if draft is not None:
+        draft.update(status=status, **extra)
