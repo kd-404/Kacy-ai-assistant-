@@ -2,8 +2,9 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic>=2.11,<3
 python-dotenv==1.0.1
-azure-identity==1.19.0
-azure-ai-projects==1.0.0b5
+azure-identity>=1.19.0
+azure-ai-projects>=2.3.0
+openai>=1.60
 azure-search-documents==11.5.2
 azure-ai-contentsafety==1.0.0
 azure-ai-textanalytics==5.3.0

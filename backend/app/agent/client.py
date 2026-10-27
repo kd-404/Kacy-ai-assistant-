@@ -1,16 +1,24 @@
 """
-Thin wrapper around Azure AI Foundry Agent Service.
+Thin wrapper around Azure AI Foundry Agent Service (azure-ai-projects 2.x).
 
 Kept deliberately small: this is the one place that talks to Foundry, so the
 rest of the app (routes, tools, guardrails) never imports the Azure SDK
-directly. Swap FOUNDRY_MODEL_DEPLOYMENT for FOUNDRY_MODEL_FALLBACK in .env if
-your subscription can't get Azure OpenAI quota (see docs/architecture.md).
+directly.
+
+How the pieces map (new Foundry projects, SDK 2.x):
+  - The agent ("kacy") lives in Foundry as a versioned prompt agent. The portal
+    Agents page and publish_version() below both create versions of it.
+  - A conversation holds the multi-turn history. We expose its id to the rest
+    of the app as "thread_id" so main.py and the frontend don't change.
+  - Each user message is one `responses.create` call against that conversation,
+    routed to the agent by name.
 """
 from __future__ import annotations
 
 import os
 
 from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition
 from azure.identity import DefaultAzureCredential
 
 from app.agent.system_prompt import SYSTEM_PROMPT
@@ -18,72 +26,51 @@ from app.agent.system_prompt import SYSTEM_PROMPT
 
 class KacyAgent:
     def __init__(self) -> None:
+        # Format: https://<resource>.services.ai.azure.com/api/projects/<project>
         self._endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
-        self._model = os.environ.get("FOUNDRY_MODEL_DEPLOYMENT", "gpt-4o-mini")
-        self._subscription_id = os.environ["AZURE_SUBSCRIPTION_ID"]
-        self._resource_group = os.environ["AZURE_RESOURCE_GROUP"]
-        # This installed azure-ai-projects beta (1.0.0b5) still needs subscription_id /
-        # resource_group_name / project_name as separate args, not parsed from the
-        # endpoint URL for us. project_name is just the last path segment of the
-        # endpoint (".../api/projects/<project_name>"), so we derive it instead of
-        # asking for a third env var.
-        self._project_name = self._endpoint.rstrip("/").rsplit("/", 1)[-1]
-        self._client: AIProjectClient | None = None
-        self._agent_id: str | None = None
+        self._agent_name = os.environ.get("FOUNDRY_AGENT_NAME", "kacy")
+        self._model = os.environ.get("FOUNDRY_MODEL_DEPLOYMENT", "gpt-4.1-mini")
+        self._project: AIProjectClient | None = None
+        self._openai = None
 
-    def _ensure_client(self) -> AIProjectClient:
-        if self._client is None:
-            self._client = AIProjectClient(
+    def _ensure_project(self) -> AIProjectClient:
+        if self._project is None:
+            self._project = AIProjectClient(
                 endpoint=self._endpoint,
-                subscription_id=self._subscription_id,
-                resource_group_name=self._resource_group,
-                project_name=self._project_name,
                 credential=DefaultAzureCredential(),
             )
-        return self._client
+        return self._project
 
-    def ensure_agent(self, tools: list[dict] | None = None) -> str:
-        """Create (or reuse) the Kacy agent definition in Foundry Agent Service."""
-        client = self._ensure_client()
-        if self._agent_id:
-            return self._agent_id
+    def _ensure_openai(self):
+        """OpenAI-style client pre-bound to the Kacy agent."""
+        if self._openai is None:
+            self._openai = self._ensure_project().get_openai_client(agent_name=self._agent_name)
+        return self._openai
 
-        agent = client.agents.create_agent(
-            model=self._model,
-            name="kacy",
-            instructions=SYSTEM_PROMPT,
-            tools=tools or [],
+    def publish_version(self) -> str:
+        """
+        Push SYSTEM_PROMPT from this repo to Foundry as a new version of the agent.
+        Not called per request; run it by hand (or from CI) when the prompt changes.
+        """
+        agent = self._ensure_project().agents.create_version(
+            agent_name=self._agent_name,
+            definition=PromptAgentDefinition(model=self._model, instructions=SYSTEM_PROMPT),
         )
-        self._agent_id = agent.id
-        return self._agent_id
+        return f"{agent.name} v{agent.version}"
 
     def run(self, user_message: str, thread_id: str | None = None) -> dict:
         """
-        Send one message, return the agent's reply plus the thread id so the
-        caller (FastAPI route) can keep the conversation going.
-
-        NOTE: this is the integration point — fill in once FOUNDRY_PROJECT_ENDPOINT
-        is real. Left unimplemented on purpose rather than faked, so a run
-        against an unconfigured .env fails loudly instead of returning fake data.
+        Send one message, return the agent's reply plus the conversation id so
+        the caller (FastAPI route) can keep the conversation going.
         """
-        client = self._ensure_client()
-        agent_id = self.ensure_agent()
+        openai = self._ensure_openai()
 
-        thread = (
-            client.agents.threads.get(thread_id)
-            if thread_id
-            else client.agents.threads.create()
-        )
-        client.agents.messages.create(thread_id=thread.id, role="user", content=user_message)
-        run = client.agents.runs.create_and_process(thread_id=thread.id, agent_id=agent_id)
-
-        messages = client.agents.messages.list(thread_id=thread.id)
-        latest = next(iter(messages), None)
-        reply_text = latest.content[0].text.value if latest and latest.content else ""
+        conversation_id = thread_id or openai.conversations.create().id
+        response = openai.responses.create(conversation=conversation_id, input=user_message)
 
         return {
-            "thread_id": thread.id,
-            "run_id": run.id,
-            "reply": reply_text,
-            "status": run.status,
+            "thread_id": conversation_id,
+            "run_id": response.id,
+            "reply": response.output_text,
+            "status": response.status,
         }
