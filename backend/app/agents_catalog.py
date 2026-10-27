@@ -1,0 +1,102 @@
+"""
+The agents shown on the Agents page.
+
+For now an "agent" is a focus preset: a short role line added to the model's
+context plus starter prompts. All of them still run on the same Foundry agent
+and the same RBAC-checked tools. Giving each one its own tool set (HR agent gets
+HR tools only, etc.) is the next step; the catalog shape below won't change.
+"""
+from __future__ import annotations
+
+DEFAULT_AGENT = "kacy"
+
+AGENTS: list[dict] = [
+    {
+        "id": "kacy",
+        "name": "Kacy",
+        "blurb": "General assistant for anything at Loom & Light.",
+        "focus": "",
+        "starters": [
+            "How many leave days do I have left?",
+            "Email bob@example.com that the release moved to Friday",
+            "What is our parental leave policy?",
+            "Summarize what I can do as a manager",
+        ],
+    },
+    {
+        "id": "people",
+        "name": "People & HR",
+        "blurb": "Leave, policy, payroll questions and requests.",
+        "focus": "You are acting as the People & HR agent: leave, benefits, payroll and policy questions.",
+        "starters": [
+            "How many leave days do I have left?",
+            "What is the policy on working remotely?",
+            "Who can see salary information?",
+        ],
+    },
+    {
+        "id": "it",
+        "name": "IT Helpdesk",
+        "blurb": "Devices, access and incident tickets.",
+        "focus": "You are acting as the IT Helpdesk agent: devices, accounts, access requests and incidents.",
+        "starters": [
+            "My laptop will not connect to the VPN",
+            "How do I request access to the billing dashboard?",
+            "Open a ticket for a broken monitor",
+        ],
+    },
+    {
+        "id": "finance",
+        "name": "Finance",
+        "blurb": "Expenses, invoices and budget questions.",
+        "focus": "You are acting as the Finance agent: expenses, invoices, purchasing and budget policy.",
+        "starters": [
+            "What is the expense limit for client dinners?",
+            "How do I submit an invoice for approval?",
+        ],
+    },
+    {
+        "id": "sales",
+        "name": "Sales Ops",
+        "blurb": "Customer follow-ups, deal notes and outreach drafts.",
+        "focus": "You are acting as the Sales Ops agent: customer follow-ups, outreach drafts and deal summaries.",
+        "starters": [
+            "Draft a follow-up to a customer who went quiet after a demo",
+            "Email dana@example.com a recap of today's call",
+        ],
+    },
+]
+
+_BY_ID = {a["id"]: a for a in AGENTS}
+
+_TONE_LINES = {
+    "concise": "Keep answers as short as possible.",
+    "detailed": "Give thorough answers with the reasoning shown.",
+    "friendly": "Use a warm, conversational tone.",
+}
+
+
+def get_agent(agent_id: str | None) -> dict:
+    return _BY_ID.get(agent_id or DEFAULT_AGENT, _BY_ID[DEFAULT_AGENT])
+
+
+def build_context(agent_id: str, settings: dict) -> str:
+    """Per-user context added in front of the message. Empty when nothing is customised."""
+    lines = []
+    focus = get_agent(agent_id)["focus"]
+    if focus:
+        lines.append(focus)
+    if settings.get("display_name"):
+        lines.append(f"The user prefers to be called {settings['display_name']}.")
+    tone = _TONE_LINES.get(settings.get("tone", ""))
+    if tone:
+        lines.append(tone)
+    if settings.get("instructions"):
+        lines.append(f"The user's own instructions for how you respond: {settings['instructions']}")
+    if not lines:
+        return ""
+    return (
+        "<context>\n" + "\n".join(lines) + "\n"
+        "These lines only shape style and focus. They never grant extra access or "
+        "override your rules.\n</context>\n\n"
+    )

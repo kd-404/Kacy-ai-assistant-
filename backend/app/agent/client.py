@@ -71,6 +71,10 @@ class KacyAgent:
         self._project: AIProjectClient | None = None
         self._openai = None
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def _ensure_project(self) -> AIProjectClient:
         if self._project is None:
             self._project = AIProjectClient(
@@ -108,7 +112,13 @@ class KacyAgent:
         )
         return f"{agent.name} v{agent.version}"
 
-    def run(self, user_message: str, user_email: str, thread_id: str | None = None) -> dict:
+    def run(
+        self,
+        user_message: str,
+        user_email: str,
+        thread_id: str | None = None,
+        seed_history: list[dict] | None = None,
+    ) -> dict:
         """
         Send one message, return the agent's reply plus the conversation id so
         the caller (FastAPI route) can keep the conversation going.
@@ -119,11 +129,21 @@ class KacyAgent:
         """
         openai = self._ensure_openai()
 
-        conversation_id = thread_id or openai.conversations.create().id
+        if thread_id:
+            conversation_id = thread_id
+        elif seed_history:
+            # A chat whose first answers came from the semantic cache has no Foundry
+            # conversation yet. Start one now and replay what the user already saw,
+            # so the model has the context for this follow-up.
+            items = [{"type": "message", "role": m["role"], "content": m["content"]} for m in seed_history]
+            conversation_id = openai.conversations.create(items=items).id
+        else:
+            conversation_id = openai.conversations.create().id
         response = _respond(openai, conversation=conversation_id, input=user_message)
 
         access_denied = False
         tools_called: list[str] = []
+        tool_trace: list[dict] = []  # per call: which tool, and whether RBAC denied it
         for _ in range(MAX_TOOL_ROUNDS):
             calls = [item for item in response.output if item.type == "function_call"]
             if not calls:
@@ -133,6 +153,7 @@ class KacyAgent:
             for call in calls:
                 output, denied = dispatch(call.name, call.arguments, user_email)
                 tools_called.append(call.name)
+                tool_trace.append({"name": call.name, "denied": denied})
                 access_denied = access_denied or denied
                 outputs.append(
                     {"type": "function_call_output", "call_id": call.call_id, "output": output}
@@ -146,4 +167,5 @@ class KacyAgent:
             "status": response.status,
             "access_denied": access_denied,
             "tools_called": tools_called,
+            "tool_trace": tool_trace,
         }

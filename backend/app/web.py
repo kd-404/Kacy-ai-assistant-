@@ -1,6 +1,6 @@
 """
-Browser-facing routes: Google sign-in, the draft approval endpoints, and a
-small test page (GET /) until the React frontend is wired to this backend.
+Browser-facing routes: Google sign-in and the draft approval endpoints.
+(The chat UI itself is served from main.py; history/settings routes are in api.py.)
 
 Who is the caller?  current_user() answers that for every route:
   - Signed in with Google -> the verified email from Google (the real path).
@@ -15,7 +15,7 @@ import os
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from app.identity import google_oauth
 from app.identity.google_oauth import SESSION_COOKIE, Session
@@ -141,82 +141,3 @@ def discard_draft(draft_id: int, request: Request, user_email: str | None = None
     _owned_pending_draft(draft_id, owner)
     email_store.mark(draft_id, "discarded")
     return {"status": "discarded"}
-
-
-# ---------- Test page ----------
-
-@router.get("/", response_class=HTMLResponse)
-def test_page() -> str:
-    return _TEST_PAGE
-
-
-_TEST_PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kacy test console</title>
-<style>
- body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#0d1014;color:#e7ebf0}
- a,button{font:inherit} button{background:#6c93ff;color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
- button.ghost{background:transparent;border:1px solid #2b323b;color:#8a94a3}
- #log{border:1px solid #2b323b;border-radius:8px;padding:12px;min-height:160px;margin:12px 0}
- .me{color:#8a94a3} .u{color:#6c93ff} .k{white-space:pre-wrap;margin:4px 0 12px}
- .draft{border:1px solid #e0a356;background:#3a2b14;border-radius:8px;padding:12px;margin:10px 0}
- .draft pre{white-space:pre-wrap;margin:8px 0;font:inherit}
- form{display:flex;gap:8px} input{flex:1;padding:8px;border-radius:6px;border:1px solid #2b323b;background:#161b21;color:#e7ebf0}
-</style></head><body>
-<h2>Kacy test console</h2>
-<p id="me" class="me">Checking sign-in...</p>
-<div id="log"></div>
-<form id="f"><input id="m" placeholder="Ask Kacy, e.g. email bob@example.com that the release moved to Friday" autocomplete="off"><button>Send</button></form>
-<h3>Drafts waiting for your approval</h3>
-<div id="drafts"><p class="me">None yet.</p></div>
-<script>
-let thread = null;
-const H = {"Content-Type":"application/json","X-Kacy":"1"};
-const el = (t, cls, text) => { const e = document.createElement(t); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-
-async function loadMe(){
-  const me = await (await fetch("/me")).json();
-  const p = document.getElementById("me"); p.textContent = "";
-  if (me.signed_in) {
-    p.append(`Signed in as ${me.email} (role: ${me.role}) `);
-    const b = el("button","ghost","Sign out"); b.onclick = async () => { await fetch("/auth/logout",{method:"POST",headers:H}); location.reload(); }; p.append(b);
-  } else {
-    const a = el("a",null,"Sign in with Google"); a.href = "/auth/google/login"; p.append(a);
-  }
-}
-
-async function loadDrafts(){
-  const box = document.getElementById("drafts"); box.textContent = "";
-  const r = await fetch("/drafts"); if (!r.ok) { box.append(el("p","me","Sign in to see drafts.")); return; }
-  const drafts = await r.json();
-  if (!drafts.length) { box.append(el("p","me","None yet.")); return; }
-  for (const d of drafts) {
-    const c = el("div","draft");
-    c.append(el("div",null,`To: ${d.to}`), el("div",null,`Subject: ${d.subject}`), el("pre",null,d.body));
-    const send = el("button",null,"Send"), discard = el("button","ghost","Discard");
-    send.onclick = () => act(d.id, "send", send); discard.onclick = () => act(d.id, "discard", discard);
-    c.append(send, " ", discard); box.append(c);
-  }
-}
-
-async function act(id, what, btn){
-  btn.disabled = true;
-  const r = await fetch(`/drafts/${id}/${what}`, {method:"POST", headers:H});
-  const body = await r.json();
-  say("system", r.ok ? (what === "send" ? `Sent. Gmail message id ${body.gmail_message_id}` : "Discarded.") : `Error: ${JSON.stringify(body.detail)}`);
-  loadDrafts();
-}
-
-function say(who, text){ const log = document.getElementById("log"); log.append(el("div", who === "you" ? "u" : "k", `${who}: ${text}`)); }
-
-document.getElementById("f").onsubmit = async (e) => {
-  e.preventDefault(); const m = document.getElementById("m"); const text = m.value.trim(); if (!text) return;
-  m.value = ""; say("you", text);
-  const r = await fetch("/chat", {method:"POST", headers:H, body: JSON.stringify({message:text, thread_id:thread})});
-  const body = await r.json();
-  if (!r.ok) { say("system", `Error ${r.status}: ${JSON.stringify(body.detail)}`); return; }
-  thread = body.thread_id; say("kacy", body.reply); loadDrafts();
-};
-
-loadMe(); loadDrafts();
-</script></body></html>"""

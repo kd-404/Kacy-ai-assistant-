@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kacy</title>
+<meta name="description" content="Kacy, the internal AI assistant for Loom & Light.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233B4FE0'/%3E%3Cpath d='M9 8v16M9 16c5 0 7-4 14-8M9 16c5 0 7 4 14 8' stroke='white' stroke-width='2.6' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+
+<!-- Icon sprite: one <symbol> per icon, drawn with <use>. Stroke follows the text colour. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6ZM12 13v7"/></symbol>
+  <symbol id="i-agents" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17.5" cy="8" r="2.4"/><path d="M16.5 13.2c2.4-.2 4 1.2 4.5 3.8"/></symbol>
+  <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M15 4.5v15"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V6M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2.5"/><path d="M5 15V7a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M19 8v4h-4"/><path d="M18.5 12A7 7 0 1 0 17 16.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="18" cy="12" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M5 19l1-4L16.5 4.5a2 2 0 0 1 3 3L9 18l-4 1Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4 8 8 6 8-6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+</svg>
+
+<div id="gate" hidden></div>
+
+<div id="app" hidden>
+  <div id="scrim"></div>
+
+  <aside id="sidebar" aria-label="Chats">
+    <div class="sb-top">
+      <a class="brand" href="/" aria-label="Kacy home">
+        <span class="mark"><svg viewBox="0 0 32 32"><path d="M9 8v16M9 16c5 0 7-4 14-8M9 16c5 0 7 4 14 8"/></svg></span>
+        <span class="brand-name">Kacy</span>
+      </a>
+      <button class="icon-btn" id="sbClose" aria-label="Close sidebar"><svg class="ic"><use href="#i-panel"/></svg></button>
+    </div>
+
+    <button class="new-chat" id="newChat"><svg class="ic"><use href="#i-plus"/></svg><span>New chat</span></button>
+
+    <label class="search">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="search" type="search" placeholder="Search chats" autocomplete="off" aria-label="Search chats">
+      <kbd>Ctrl K</kbd>
+    </label>
+
+    <nav class="sb-nav">
+      <button class="nav-item" id="navAgents"><svg class="ic"><use href="#i-agents"/></svg>Agents</button>
+      <button class="nav-item" id="navCustomize"><svg class="ic"><use href="#i-tune"/></svg>Customize Kacy</button>
+    </nav>
+
+    <div id="chatList" class="chat-list" role="list"></div>
+
+    <div class="sb-foot">
+      <div class="who">
+        <span class="avatar" id="avatar"></span>
+        <span class="who-text"><b id="whoName"></b><small id="whoRole"></small></span>
+      </div>
+      <button class="icon-btn" id="themeBtn" aria-label="Switch theme"><svg class="ic"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" id="signOut" aria-label="Sign out"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <button class="icon-btn only-narrow" id="sbOpen" aria-label="Open sidebar"><svg class="ic"><use href="#i-menu"/></svg></button>
+      <button class="icon-btn only-collapsed" id="sbOpenWide" aria-label="Open sidebar"><svg class="ic"><use href="#i-panel"/></svg></button>
+      <h1 id="chatTitle">New chat</h1>
+      <span class="agent-chip" id="agentChip"></span>
+      <span class="grow"></span>
+      <button class="icon-btn" id="paneBtn" aria-label="Show activity"><svg class="ic"><use href="#i-panel"/></svg></button>
+    </header>
+
+    <section id="viewChat" class="view">
+      <div id="scroll" class="scroll"><div id="thread" class="thread"></div></div>
+      <div class="composer-wrap">
+        <form id="composer" class="composer" autocomplete="off">
+          <textarea id="input" rows="1" placeholder="Message Kacy" aria-label="Message Kacy"></textarea>
+          <div class="composer-row">
+            <button type="button" class="pill" id="agentPick"><span id="agentPickName">Kacy</span><svg class="ic sm"><use href="#i-chev"/></svg></button>
+            <span class="grow"></span>
+            <button type="submit" class="send" id="sendBtn" aria-label="Send message" disabled><svg class="ic"><use href="#i-send"/></svg></button>
+          </div>
+        </form>
+        <p class="fine">Kacy can make mistakes. Emails are never sent without your approval.</p>
+      </div>
+    </section>
+
+    <section id="viewAgents" class="view" hidden>
+      <div class="scroll"><div class="page">
+        <h2>Agents</h2>
+        <p class="lede">Each agent focuses Kacy on one job. They all follow the same role checks and approval rules.</p>
+        <div id="agentGrid" class="agent-grid"></div>
+      </div></div>
+    </section>
+  </main>
+
+  <aside id="pane" aria-label="Activity">
+    <div class="pane-head">
+      <h2>Activity</h2>
+      <span id="paneMs" class="muted"></span>
+      <span class="grow"></span>
+      <button class="icon-btn" id="paneClose" aria-label="Close activity"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div id="paneBody" class="pane-body"></div>
+  </aside>
+</div>
+
+<div id="menu" class="menu" hidden role="menu"></div>
+
+<dialog id="customize">
+  <form method="dialog" id="customizeForm">
+    <h2>Customize Kacy</h2>
+    <p class="lede">These apply to your chats only. They change how Kacy answers, never what it is allowed to do.</p>
+    <label>What should Kacy call you?<input id="cName" maxlength="60" placeholder="Your name"></label>
+    <label>Tone
+      <select id="cTone">
+        <option value="balanced">Balanced</option>
+        <option value="concise">Concise</option>
+        <option value="detailed">Detailed</option>
+        <option value="friendly">Friendly</option>
+      </select>
+    </label>
+    <label>Instructions for Kacy
+      <textarea id="cInstr" rows="4" maxlength="1000" placeholder="For example: I work in sales. Keep emails under 100 words."></textarea>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="ghost" id="cCancel">Cancel</button>
+      <button type="submit" class="primary" id="cSave" value="save">Save changes</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="/ui/app.js"></script>
+</body>
+</html>
