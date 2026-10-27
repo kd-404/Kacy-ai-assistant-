@@ -49,8 +49,16 @@ def _respond(openai, **kwargs):
         body = exc.body if isinstance(exc.body, dict) else {}
         if body.get("code") != "content_filter" and "content management policy" not in str(exc):
             raise
-        result = (body.get("innererror") or {}).get("content_filter_result") or {}
-        flagged = {k: v for k, v in result.items() if isinstance(v, dict) and (v.get("filtered") or v.get("detected"))}
+        # Azure has used two shapes for this: a single innererror.content_filter_result,
+        # or a content_filters list with content_filter_results per source. Read both.
+        results = [(body.get("innererror") or {}).get("content_filter_result") or {}]
+        results += [f.get("content_filter_results") or {} for f in body.get("content_filters") or []]
+        flagged = {
+            k: v
+            for result in results
+            for k, v in result.items()
+            if isinstance(v, dict) and (v.get("filtered") or v.get("detected"))
+        }
         raise ContentFiltered(flagged, exc.body) from exc
 
 
