@@ -20,6 +20,14 @@ class KacyAgent:
     def __init__(self) -> None:
         self._endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
         self._model = os.environ.get("FOUNDRY_MODEL_DEPLOYMENT", "gpt-4o-mini")
+        self._subscription_id = os.environ["AZURE_SUBSCRIPTION_ID"]
+        self._resource_group = os.environ["AZURE_RESOURCE_GROUP"]
+        # This installed azure-ai-projects beta (1.0.0b5) still needs subscription_id /
+        # resource_group_name / project_name as separate args, not parsed from the
+        # endpoint URL for us. project_name is just the last path segment of the
+        # endpoint (".../api/projects/<project_name>"), so we derive it instead of
+        # asking for a third env var.
+        self._project_name = self._endpoint.rstrip("/").rsplit("/", 1)[-1]
         self._client: AIProjectClient | None = None
         self._agent_id: str | None = None
 
@@ -27,6 +35,9 @@ class KacyAgent:
         if self._client is None:
             self._client = AIProjectClient(
                 endpoint=self._endpoint,
+                subscription_id=self._subscription_id,
+                resource_group_name=self._resource_group,
+                project_name=self._project_name,
                 credential=DefaultAzureCredential(),
             )
         return self._client
