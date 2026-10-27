@@ -12,11 +12,15 @@ Two halves:
 from __future__ import annotations
 
 import json
+import logging
+import os
 from typing import Callable
 
 from app.guardrails.pii_redaction import redact
 from app.identity.rbac import AccessDenied
 from app.tools.mcp_hr.server import get_leave_balance, get_salary
+
+logger = logging.getLogger("kacy.tools")
 
 # JSON-Schema argument definitions. Note: no "requesting_user" argument anywhere.
 TOOL_SPECS: list[dict] = [
@@ -89,4 +93,10 @@ def dispatch(name: str, arguments_json: str, user_email: str) -> tuple[str, bool
     # model, regardless of which tool produced it. Numbers/bools pass through
     # untouched -- redaction only makes sense on text.
     scrubbed = {k: (redact(v) if isinstance(v, str) else v) for k, v in result.items()}
+
+    # Demo-only: show what redaction changed. Off by default, because writing the
+    # un-redacted value to logs would itself be a PII leak in a real deployment.
+    if os.environ.get("LOG_PII_DEMO") == "1":
+        logger.info("tool.%s before_redaction=%s after_redaction=%s", name, result, scrubbed)
+
     return json.dumps(scrubbed), False
