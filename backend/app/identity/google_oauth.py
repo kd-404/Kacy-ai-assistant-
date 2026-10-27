@@ -4,10 +4,11 @@
   1. WHO is this?   Google returns a signed ID token. We verify the signature,
                     read the email from it, and look that email up in the role
                     table (rbac.py). That role is what RBAC enforces.
-  2. CAN Kacy send email as them?  The user grants one Gmail permission,
-                    gmail.send (send only, it cannot read the inbox). Google
-                    gives us an access token for that, used only when the user
-                    presses Send on a draft.
+  2. WHAT can Kacy do as them?  The user grants a few Google permissions (send
+                    mail, read the inbox, see and add calendar events, create
+                    documents Kacy makes itself). Google gives us an access
+                    token for those, used when a tool reads something or when
+                    the user presses the button on an approval card.
 
 The flow (standard OAuth 2.0 "authorization code" flow):
   browser -> /auth/google/login -> Google consent screen -> back to
@@ -31,7 +32,11 @@ from google.oauth2 import id_token
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = "openid email profile https://www.googleapis.com/auth/gmail.send"
+_GOOGLE = "https://www.googleapis.com/auth/"
+# Narrowest scopes that do the job: send only (not compose), calendar events + free/busy,
+# and drive.file, which only reaches files Kacy itself created.
+SCOPES = " ".join(["openid", "email", "profile"] + [_GOOGLE + s for s in (
+    "gmail.send", "gmail.readonly", "calendar.events", "calendar.freebusy", "drive.file")])
 SESSION_COOKIE = "kacy_session"
 
 
@@ -42,6 +47,8 @@ class Session:
     access_token: str
     refresh_token: str | None
     expires_at: float
+    scopes: str = ""        # what the person actually granted (they can untick boxes on Google's screen)
+    demo: bool = False      # demo accounts have no Google access; tools use the seeded demo data
 
 
 _sessions: dict[str, Session] = {}
@@ -105,7 +112,16 @@ def complete_login(code: str, state: str) -> tuple[str, Session]:
         access_token=tokens["access_token"],
         refresh_token=tokens.get("refresh_token"),
         expires_at=time.time() + int(tokens.get("expires_in", 3600)) - 60,
+        scopes=tokens.get("scope", ""),
     )
+    session_id = secrets.token_urlsafe(32)
+    _sessions[session_id] = session
+    return session_id, session
+
+
+def create_demo_session(email: str, name: str) -> tuple[str, Session]:
+    """A session for a demo persona: signed in to Kacy, but with no Google access at all."""
+    session = Session(email=email, name=name, access_token="", refresh_token=None, expires_at=0, demo=True)
     session_id = secrets.token_urlsafe(32)
     _sessions[session_id] = session
     return session_id, session
@@ -122,10 +138,12 @@ def end_session(session_id: str | None) -> None:
 
 def fresh_access_token(session: Session) -> str:
     """Access tokens last ~1 hour; use the refresh token to get a new one when needed."""
+    if session.demo:
+        raise PermissionError("demo accounts have no Google access")
     if time.time() < session.expires_at:
         return session.access_token
     if not session.refresh_token:
-        raise PermissionError("Gmail access expired; sign in again")
+        raise PermissionError("Google access expired; sign in again")
 
     resp = httpx.post(
         TOKEN_URL,

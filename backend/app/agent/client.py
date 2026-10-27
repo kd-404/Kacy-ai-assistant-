@@ -25,7 +25,7 @@ from openai import BadRequestError
 from app.agent.system_prompt import SYSTEM_PROMPT
 from app.tools.registry import TOOL_SPECS, dispatch
 
-MAX_TOOL_ROUNDS = 5  # safety stop so a confused model can't loop forever
+MAX_TOOL_ROUNDS = 6  # safety stop so a confused model can't loop forever
 
 
 class ContentFiltered(Exception):
@@ -118,6 +118,7 @@ class KacyAgent:
         user_email: str,
         thread_id: str | None = None,
         seed_history: list[dict] | None = None,
+        session=None,
     ) -> dict:
         """
         Send one message, return the agent's reply plus the conversation id so
@@ -151,9 +152,9 @@ class KacyAgent:
 
             outputs = []
             for call in calls:
-                output, denied = dispatch(call.name, call.arguments, user_email)
+                output, denied, notes = dispatch(call.name, call.arguments, user_email, session)
                 tools_called.append(call.name)
-                tool_trace.append({"name": call.name, "denied": denied})
+                tool_trace.append({"name": call.name, "denied": denied, "notes": notes})
                 access_denied = access_denied or denied
                 outputs.append(
                     {"type": "function_call_output", "call_id": call.call_id, "output": output}

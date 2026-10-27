@@ -17,10 +17,10 @@ AGENTS: list[dict] = [
         "blurb": "General assistant for anything at Loom & Light.",
         "focus": "",
         "starters": [
-            "How many leave days do I have left?",
+            "Give me my morning brief",
+            "Find a free 30 minute slot this week for a call with dana@brightcloth.example",
+            "Summarize my unread email and draft replies",
             "Email bob@example.com that the release moved to Friday",
-            "What is our parental leave policy?",
-            "Summarize what I can do as a manager",
         ],
     },
     {
@@ -30,8 +30,9 @@ AGENTS: list[dict] = [
         "focus": "You are acting as the People & HR agent: leave, benefits, payroll and policy questions.",
         "starters": [
             "How many leave days do I have left?",
+            "Request leave from next Monday to Wednesday for a family event",
+            "Show leave requests waiting for my approval",
             "What is the policy on working remotely?",
-            "Who can see salary information?",
         ],
     },
     {
@@ -40,9 +41,9 @@ AGENTS: list[dict] = [
         "blurb": "Devices, access and incident tickets.",
         "focus": "You are acting as the IT Helpdesk agent: devices, accounts, access requests and incidents.",
         "starters": [
-            "My laptop will not connect to the VPN",
+            "My laptop will not connect to the VPN, open a ticket",
+            "What are the status of my open tickets and requests?",
             "How do I request access to the billing dashboard?",
-            "Open a ticket for a broken monitor",
         ],
     },
     {
@@ -52,7 +53,8 @@ AGENTS: list[dict] = [
         "focus": "You are acting as the Finance agent: expenses, invoices, purchasing and budget policy.",
         "starters": [
             "What is the expense limit for client dinners?",
-            "How do I submit an invoice for approval?",
+            "Search my inbox for invoices and summarize them",
+            "Draft a document with the expense policy for new joiners",
         ],
     },
     {
@@ -61,8 +63,9 @@ AGENTS: list[dict] = [
         "blurb": "Customer follow-ups, deal notes and outreach drafts.",
         "focus": "You are acting as the Sales Ops agent: customer follow-ups, outreach drafts and deal summaries.",
         "starters": [
-            "Draft a follow-up to a customer who went quiet after a demo",
-            "Email dana@example.com a recap of today's call",
+            "Reply to Dana from Bright Cloth about pricing for 40 seats",
+            "Draft a one-page rollout plan document for Bright Cloth",
+            "Schedule a 45 minute demo follow-up with dana@brightcloth.example",
         ],
     },
 ]

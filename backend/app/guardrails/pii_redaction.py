@@ -32,3 +32,26 @@ def redact(text: str, categories: list[str] | None = None) -> str:
 def redact_field(value: str, label: str = "REDACTED") -> str:
     """Hard redaction for a known-sensitive structured field (e.g. a salary number)."""
     return f"[{label}]"
+
+
+# Financial and government identifiers only. Used on mail and documents, where names and
+# email addresses must stay readable (Kacy needs them to reply) but card and account numbers must not.
+FINANCIAL_ID_CATEGORIES = [
+    "CreditCardNumber", "USSocialSecurityNumber", "InternationalBankingAccountNumber",
+    "ABARoutingNumber", "USBankAccountNumber", "SWIFTCode",
+]
+
+
+def redact_many(texts: list[str], categories: list[str] | None = None) -> list[str]:
+    """Redact several strings. The service takes at most 5 documents per request, so batch."""
+    if not texts:
+        return []
+    client = TextAnalyticsClient(
+        endpoint=os.environ["LANGUAGE_ENDPOINT"], credential=AzureKeyCredential(os.environ["LANGUAGE_KEY"]))
+    out: list[str] = []
+    for i in range(0, len(texts), 5):
+        for result in client.recognize_pii_entities(texts[i:i + 5], categories_filter=categories):
+            if result.is_error:
+                raise RuntimeError(f"PII redaction failed: {result.error}")
+            out.append(result.redacted_text)
+    return out

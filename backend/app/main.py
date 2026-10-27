@@ -20,14 +20,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import chats
+from app import actions, chats, timeutil
 from app.agent.client import ContentFiltered, KacyAgent
 from app.agents_catalog import build_context, get_agent
 from app.api import router as api_router
 from app.cost import semantic_cache
 from app.guardrails.prompt_shields import PromptInjectionDetected, check_user_message
 from app.identity.rbac import AccessDenied, role_for
-from app.tools.mcp_email import server as email_store
 from app.web import current_user, router as web_router
 
 load_dotenv()
@@ -72,8 +71,8 @@ class ChatResponse(BaseModel):
     title: str
     cache_hit: bool = False
     access_denied: bool = False
-    pending_drafts: list[dict] = []
-    new_drafts: list[dict] = []     # drafts created by this turn (shown inline with the answer)
+    pending_actions: list[dict] = []
+    new_actions: list[dict] = []    # approval cards created by this turn (shown inline with the answer)
     activity: dict = {}
 
 
@@ -82,8 +81,10 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-def _draft_view(d: dict) -> dict:
-    return {k: d[k] for k in ("id", "to", "subject", "body", "status")}
+def _date_line() -> str:
+    """Models don't know today's date. Without it, 'next Friday at 3' cannot become a real time."""
+    now = timeutil.now_local()
+    return f"Current date and time: {now.strftime('%A')} {now.day} {now.strftime('%B %Y, %H:%M')} ({timeutil.tz()})."
 
 
 def _step(id_: str, label: str, detail: str, status: str = "ok") -> dict:
@@ -93,7 +94,7 @@ def _step(id_: str, label: str, detail: str, status: str = "ok") -> dict:
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, request: Request) -> ChatResponse:
     started = time.perf_counter()
-    user_email, _ = current_user(request, req.user_email)
+    user_email, session = current_user(request, req.user_email)
     try:
         role = role_for(user_email).value
     except AccessDenied:
@@ -130,12 +131,13 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
     steps.append(_step("shields", "Prompt Shields", "No injection or jailbreak found"))
 
     agent_id = chat_row["agent"] if chat_row else get_agent(req.agent)["id"]
-    context = build_context(agent_id, chats.get_settings(user_email))
+    context = build_context(agent_id, chats.get_settings(user_email))  # personal style/focus only
+    prefix = f"<context>\n{_date_line()}\n</context>\n\n" + context
 
     # 2) Semantic cache. Shared across users, so it is only used when nothing about
     #    the answer depends on this user's agent or personal instructions.
     cached = None if context else semantic_cache.get(message)
-    drafts_before = {d["id"] for d in email_store.pending_for(user_email)}
+    actions_before = {a["id"] for a in actions.pending_for(user_email)}
 
     result: dict | None = None
     if cached is not None:
@@ -148,7 +150,7 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
         seed = chats.messages(user_email, chat_row["id"]) if chat_row and not conversation else None
         try:
             result = _agent.run(
-                context + message, user_email=user_email, thread_id=conversation, seed_history=seed
+                prefix + message, user_email=user_email, thread_id=conversation, seed_history=seed, session=session
             )
         except AccessDenied as exc:
             logger.info("chat.access_denied resource=%s role=%s", exc.resource, exc.role)
@@ -171,17 +173,17 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
             semantic_cache.set(message, reply)
 
     for call in tool_trace:
-        steps.append(_step(
-            "tool", f"Tool: {call['name']}",
-            "Denied by role check" if call["denied"] else f"Ran as {role}",
-            "denied" if call["denied"] else "ok",
-        ))
-    if any(not c["denied"] and c["name"] != "draft_email" for c in tool_trace):
-        steps.append(_step("pii", "PII redaction", "Tool output scrubbed before the model saw it"))
+        detail = "Denied by role check" if call["denied"] else f"Ran as {role}"
+        if call["notes"]:
+            detail += ". " + ". ".join(call["notes"])
+        blocked = any("blocked" in n for n in call["notes"])
+        steps.append(_step("tool", f"Tool: {call['name']}", detail,
+                           "denied" if call["denied"] or blocked else "ok"))
 
-    new_drafts = [_draft_view(d) for d in email_store.pending_for(user_email) if d["id"] not in drafts_before]
-    if new_drafts:
-        steps.append(_step("approval", "Human approval", "Draft is waiting for your Send", "pending"))
+    new_actions = [actions.public(a) for a in actions.pending_for(user_email) if a["id"] not in actions_before]
+    if new_actions:
+        what = ", ".join(sorted({a["title"].lower() for a in new_actions}))
+        steps.append(_step("approval", "Human approval", f"Waiting for you: {what}", "pending"))
 
     # 3) Save the turn. The chat row is created only now, so a blocked first message
     #    doesn't leave an empty chat in the sidebar.
@@ -196,7 +198,8 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
         chats.add_message(user_email, chat_id, "user", message)
     ms = int((time.perf_counter() - started) * 1000)
     activity = {"steps": steps, "ms": ms}
-    chats.add_message(user_email, chat_id, "assistant", reply, {"activity": activity, "drafts": new_drafts})
+    chats.add_message(user_email, chat_id, "assistant", reply,
+                      {"activity": activity, "action_ids": [a["id"] for a in new_actions]})
 
     return ChatResponse(
         reply=reply,
@@ -204,7 +207,7 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
         title=title,
         cache_hit=cached is not None,
         access_denied=access_denied,
-        pending_drafts=[_draft_view(d) for d in email_store.pending_for(user_email)],
-        new_drafts=new_drafts,
+        pending_actions=[actions.public(a) for a in actions.pending_for(user_email)],
+        new_actions=new_actions,
         activity=activity,
     )

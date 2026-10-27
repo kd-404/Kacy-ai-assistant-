@@ -20,5 +20,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - name: Unit tests (tools, approval chain, approval queue)
+        run: python -m unittest discover -s tests
       - name: Run eval suite (release gate)
         run: python -m app.eval.run_eval

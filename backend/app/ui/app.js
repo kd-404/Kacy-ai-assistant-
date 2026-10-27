@@ -116,8 +116,8 @@ const state = {
   view: "chat",                       // "chat" | "agents"
   current: { id: null, title: "New chat", agent: "kacy", messages: [] },
   newChatAgent: "kacy",
-  pendingDrafts: new Set(),           // draft ids still waiting for Send
-  draftState: {},                     // id -> "sent" | "discarded" (this session)
+  pendingActions: new Set(),          // approval-card ids still waiting for the person
+  actionView: {},                     // id -> latest card state returned by the server
   busy: false,
   abort: null,
   selected: null,                     // activity shown in the right pane
@@ -301,7 +301,7 @@ function messageNode(m, isLast) {
   const prose = el("div", "prose");
   prose.innerHTML = markdown(m.content);
   body.append(prose);
-  for (const d of (m.meta && m.meta.drafts) || []) body.append(approvalCard(d));
+  for (const a of (m.meta && m.meta.actions) || []) body.append(approvalCard(a));
 
   const actions = el("div", "actions");
   const copy = el("button", "icon-btn"); copy.setAttribute("aria-label", "Copy answer"); copy.title = "Copy"; copy.append(icon("copy"));
@@ -326,44 +326,58 @@ function messageNode(m, isLast) {
 }
 
 // Approval card ------------------------------------------------------
-// The model can only create a draft. This card's Send button calls the backend
-// route that actually sends, using the signed-in user's Google token.
+// The model can only queue a card. This card's button calls the backend route that
+// actually does the thing (send, create, file, record), as the signed-in person.
 
-function approvalCard(d) {
-  const handled = state.draftState[d.id];
-  const waiting = state.pendingDrafts.has(d.id) && !handled;
-  const card = el("div", "approval" + (handled === "sent" ? " done" : waiting ? "" : " gone"));
+const KIND_ICON = { email: "mail", event: "calendar", document: "doc", leave_request: "check", leave_decision: "check", ticket: "ticket" };
+
+function approvalCard(a) {
+  a = state.actionView[a.id] || a;           // newest state we know about
+  state.actionView[a.id] = a;
+  const waiting = a.status === "pending_approval";
+  const done = a.status === "done";
+  const card = el("div", "approval" + (done ? " done" : waiting ? "" : " gone"));
   const head = el("header");
-  head.append(icon(handled === "sent" ? "check" : "mail"));
-  head.append(el("span", null,
-    handled === "sent" ? "Email sent" : handled === "discarded" ? "Draft discarded" : waiting ? "Waiting for your approval" : "Draft handled earlier"));
+  head.append(icon(done ? "check" : KIND_ICON[a.kind] || "mail"));
+  head.append(el("span", null, done ? "Done" : a.status === "discarded" ? "Discarded" : a.status === "failed" ? "Could not be applied" : a.title + " · waiting for your approval"));
   card.append(head);
   const dl = el("dl");
-  dl.append(el("dt", null, "To"), el("dd", null, d.to), el("dt", null, "Subject"), el("dd", null, d.subject));
-  card.append(dl, el("pre", null, d.body));
+  for (const [k, v] of a.view.rows) dl.append(el("dt", null, k), el("dd", null, v));
+  card.append(dl);
+  if (a.view.body) card.append(el("pre", null, a.view.body));
+
+  const msg = a.result && a.result.message;
+  if (msg) {
+    const r = el("p", "result", msg);
+    for (const [label, url] of [["Open", a.result.link], ["Join with Meet", a.result.meet]]) {
+      if (url && /^https:\/\//.test(url)) { // only ever link to https, whatever came back
+        const link = el("a", null, label); link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        r.append(" ", link);
+      }
+    }
+    card.append(r);
+  }
   if (waiting) {
     const foot = el("footer");
-    const send = el("button", "primary", "Send email");
+    const go = el("button", "primary", a.confirm_label);
     const discard = el("button", "ghost", "Discard");
     const err = el("span", "err");
-    send.onclick = () => draftAction(d, "send", [send, discard], err);
-    discard.onclick = () => draftAction(d, "discard", [send, discard], err);
-    foot.append(send, discard, err);
+    go.onclick = () => actionRequest(a, "approve", [go, discard], err);
+    discard.onclick = () => actionRequest(a, "discard", [go, discard], err);
+    foot.append(go, discard, err);
     card.append(foot);
-  } else {
-    card.append(el("footer"));
   }
   return card;
 }
 
-async function draftAction(d, what, buttons, errEl) {
+async function actionRequest(a, what, buttons, errEl) {
   buttons.forEach((b) => (b.disabled = true));
   errEl.textContent = "";
-  const r = await api(`/drafts/${d.id}/${what}`, { method: "POST" });
+  const r = await api(`/api/actions/${a.id}/${what}`, { method: "POST" });
   if (r.ok) {
-    state.draftState[d.id] = what === "send" ? "sent" : "discarded";
-    state.pendingDrafts.delete(d.id);
-    toast(what === "send" ? "Email sent" : "Draft discarded");
+    state.actionView[a.id] = r.data;
+    state.pendingActions.delete(a.id);
+    toast(what === "approve" ? "Done" : "Discarded");
     renderThread({ keepScroll: true });
   } else {
     buttons.forEach((b) => (b.disabled = false));
@@ -460,8 +474,8 @@ async function send(text, { regenerate = false } = {}) {
   const d = r.data;
   if (!c.id) c.agent = state.newChatAgent;
   c.id = d.chat_id; c.title = d.title;
-  state.pendingDrafts = new Set(d.pending_drafts.map((x) => x.id));
-  const msg = { role: "assistant", content: d.reply, meta: { activity: d.activity, drafts: d.new_drafts } };
+  state.pendingActions = new Set(d.pending_actions.map((x) => x.id));
+  const msg = { role: "assistant", content: d.reply, meta: { activity: d.activity, actions: d.new_actions } };
   c.messages.push(msg);
   state.selected = d.activity;
   history.replaceState(null, "", "#/c/" + c.id);
@@ -529,8 +543,9 @@ async function openChat(id) {
   if (state.busy) return;
   const r = await api("/api/chats/" + id);
   if (!r.ok) { toast("That chat no longer exists"); history.replaceState(null, "", "#"); return newChat(); }
-  const dr = await api("/drafts");
-  if (dr.ok) state.pendingDrafts = new Set(dr.data.map((x) => x.id));
+  const dr = await api("/api/actions");
+  if (dr.ok) state.pendingActions = new Set(dr.data.map((x) => x.id));
+  state.actionView = {};
   state.current = { id: r.data.id, title: r.data.title, agent: r.data.agent, messages: r.data.messages };
   const lastAnswer = [...r.data.messages].reverse().find((m) => m.role === "assistant");
   state.selected = lastAnswer && lastAnswer.meta ? lastAnswer.meta.activity || null : null;
@@ -606,7 +621,7 @@ function autosize() {
 
 // ---------- 6. boot ----------
 
-function showGate() {
+async function showGate() {
   const gate = $("gate");
   gate.hidden = false;
   const card = el("div", "gate-card");
@@ -615,8 +630,26 @@ function showGate() {
   const google = el("a", "google", "Continue with Google");
   google.href = "/auth/google/login";
   card.append(mark, el("h1", null, "Kacy, the assistant for Loom & Light"),
-    el("p", null, "Sign in with your company Google account. Your role decides what Kacy can look up for you."),
+    el("p", null, "Sign in with your company Google account. Your role decides what Kacy can look up for you, and Kacy connects to your Gmail, Calendar and Drive."),
     google, el("p", "muted", "Access is limited to approved accounts."));
+
+  const personas = await api("/api/personas");
+  if (personas.ok) {
+    const box = el("div", "personas");
+    box.append(el("p", null, "Or try a demo account with sample company data. Nothing is sent from a demo account."));
+    const row = el("div", "persona-row");
+    for (const p of personas.data) {
+      const b = el("button", "ghost", `${p.id[0].toUpperCase() + p.id.slice(1)} · ${p.role}`);
+      b.onclick = async () => {
+        b.disabled = true;
+        const r = await api("/auth/demo", { method: "POST", body: JSON.stringify({ persona: p.id }) });
+        if (r.ok) location.reload(); else { b.disabled = false; toast("Could not start the demo"); }
+      };
+      row.append(b);
+    }
+    box.append(row);
+    card.append(box);
+  }
   gate.append(card);
 }
 
@@ -627,16 +660,18 @@ async function boot() {
   state.me = me.data;
 
   $("whoName").textContent = me.data.name || me.data.email;
-  $("whoRole").textContent = me.data.role;
+  $("whoRole").textContent = me.data.role + (me.data.demo ? " · demo data" : "");
+  const need = ["gmail.send", "gmail.readonly", "calendar.events", "calendar.freebusy", "drive.file"];
+  if (!me.data.demo && need.some((n) => !me.data.scopes.includes(n))) $("reconnect").hidden = false;
   $("avatar").textContent = (me.data.name || me.data.email)[0].toUpperCase();
   $("app").hidden = false;
   if (narrow()) $("app").classList.add("no-sidebar");
   if (innerWidth <= 1180) $("app").classList.add("no-pane");
 
-  const [settings, agents, drafts] = await Promise.all([api("/api/settings"), api("/api/agents"), api("/drafts")]);
+  const [settings, agents, pending] = await Promise.all([api("/api/settings"), api("/api/agents"), api("/api/actions")]);
   if (settings.ok) state.settings = settings.data;
   if (agents.ok) state.agents = agents.data;
-  if (drafts.ok) state.pendingDrafts = new Set(drafts.data.map((x) => x.id));
+  if (pending.ok) state.pendingActions = new Set(pending.data.map((x) => x.id));
   renderAgents();
   await refreshChats();
 

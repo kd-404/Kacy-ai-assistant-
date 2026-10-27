@@ -23,7 +23,7 @@ _store.add({"employee": "carla@kacy-demo.test", "leave_balance_days": 20, "salar
 _store.add({"employee": "dev@kacy-demo.test", "leave_balance_days": 25, "salary": 240000})
 
 
-def get_leave_balance(requesting_user: str, target_user: str | None = None) -> dict:
+def get_leave_balance(requesting_user: str, target_user: str | None = None, *, session=None) -> dict:
     target_user = target_user or requesting_user
     if target_user != requesting_user and role_for(requesting_user) not in {Role.MANAGER, Role.EXEC}:
         raise AccessDenied(resource=f"leave:{target_user}", role=role_for(requesting_user))
@@ -33,7 +33,7 @@ def get_leave_balance(requesting_user: str, target_user: str | None = None) -> d
     return {"employee": target_user, "leave_balance_days": record["leave_balance_days"]}
 
 
-def get_salary(requesting_user: str, target_user: str) -> dict:
+def get_salary(requesting_user: str, target_user: str, *, session=None) -> dict:
     """
     This is the video's exact scenario: an intern asking for the CEO's salary.
     Only the record owner, or a manager/exec, may see an un-redacted figure.
@@ -48,3 +48,10 @@ def get_salary(requesting_user: str, target_user: str) -> dict:
         return {"employee": target_user, "salary": record["salary"]}
 
     raise AccessDenied(resource=f"salary:{target_user}", role=requester_role)
+
+
+def deduct_leave(employee: str, days: int) -> None:
+    """Called by the approval chain once a request is fully approved."""
+    record = next((r for r in _store.all() if r["employee"] == employee), None)
+    if record is not None:
+        record["leave_balance_days"] = max(0, record["leave_balance_days"] - days)
