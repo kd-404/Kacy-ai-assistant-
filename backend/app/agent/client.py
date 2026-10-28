@@ -89,6 +89,15 @@ class KacyAgent:
             self._openai = self._ensure_project().get_openai_client(agent_name=self._agent_name)
         return self._openai
 
+    def complete(self, instructions: str, text: str) -> str:
+        """
+        One plain model call with no tools, no memory and no agent: used for small jobs like
+        rewriting a chat's brief. Uses the same deployment as the agent.
+        """
+        client = self._ensure_project().get_openai_client()
+        response = _respond(client, model=self._model, instructions=instructions, input=text)
+        return response.output_text
+
     def publish_version(self) -> str:
         """
         Push SYSTEM_PROMPT from this repo to Foundry as a new version of the agent.

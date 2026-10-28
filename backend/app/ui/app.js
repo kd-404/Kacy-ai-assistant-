@@ -393,6 +393,7 @@ async function actionRequest(a, what, buttons, errEl) {
     state.pendingActions.delete(a.id);
     toast(what === "approve" ? "Done" : "Discarded");
     renderThread({ keepScroll: true });
+    if (state.onAction) state.onAction();   // Desk windows redraw their own cards
   } else {
     buttons.forEach((b) => (b.disabled = false));
     const detail = r.data && r.data.detail;
@@ -600,8 +601,12 @@ function showView(v) {
   state.view = v;
   $("viewChat").hidden = v !== "chat";
   $("viewAgents").hidden = v !== "agents";
+  $("viewDesk").hidden = v !== "desk";
   $("navAgents").classList.toggle("on", v === "agents");
-  $("chatTitle").textContent = v === "agents" ? "Agents" : state.current.title;
+  $("segChat").classList.toggle("on", v === "chat");
+  $("segDesk").classList.toggle("on", v === "desk");
+  $("chatTitle").textContent = v === "agents" ? "Agents" : v === "desk" ? "Desk" : state.current.title;
+  if (v === "desk") import("/ui/desk.js").then((m) => m.mount());
   if (v === "agents") $("agentChip").textContent = "";
   renderSidebar();
 }
@@ -702,6 +707,8 @@ $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!state.busy) send($("input").value); }
 });
 $("newChat").onclick = () => newChat();
+$("segChat").onclick = () => showView("chat");
+$("segDesk").onclick = () => { showView("desk"); closeSidebarIfNarrow(); };
 $("navAgents").onclick = () => { showView("agents"); closeSidebarIfNarrow(); };
 $("agentPick").onclick = () => showMenu($("agentPick"), state.agents.map((a) => ({
   label: a.name, icon: "agents", run: () => { state.newChatAgent = a.id; renderThread({ keepScroll: true }); },
@@ -756,3 +763,6 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("click", (e) => { if (!$("menu").contains(e.target)) hideMenu(); }, true);
 
 boot();
+
+// Desk (desk.js) reuses these instead of copying them.
+export { $, api, el, icon, markdown, approvalCard, faceNode, toast, state, refreshChats, showMenu, openChat };

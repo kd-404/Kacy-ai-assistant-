@@ -37,6 +37,8 @@
   <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20V3.5Z"/><path d="M14 3.5V8h4M9.5 12.5h5M9.5 16h5"/></symbol>
   <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 0 0 4v0a2 2 0 0 1 0 4v1.5h16V16a2 2 0 0 1 0-4v0a2 2 0 0 1 0-4V6.5H4V8Z"/><path d="M14 7v10" stroke-dasharray="2 2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
 </svg>
 
@@ -90,6 +92,10 @@
       <h1 id="chatTitle">New chat</h1>
       <span class="agent-chip" id="agentChip"></span>
       <span class="grow"></span>
+      <div class="seg" id="viewSeg" role="tablist" aria-label="View">
+        <button id="segChat" role="tab" class="on">Chat</button>
+        <button id="segDesk" role="tab">Desk</button>
+      </div>
       <button class="icon-btn" id="paneBtn" aria-label="Show activity"><svg class="ic"><use href="#i-panel"/></svg></button>
     </header>
 
@@ -106,6 +112,21 @@
         </form>
         <div id="starters" class="starters"></div>
         <p class="fine">Kacy can make mistakes. Emails are never sent without your approval.</p>
+      </div>
+    </section>
+
+    <section id="viewDesk" class="view desk-view" hidden>
+      <div class="desk-bar">
+        <button class="primary sm" id="deskNew"><svg class="ic sm"><use href="#i-plus"/></svg>New window</button>
+        <button class="ghost sm" id="deskAdd">Add an existing chat</button>
+        <span class="desk-hint">Drag the <svg class="ic sm"><use href="#i-link"/></svg> dot from one window onto another to link them. The second window will understand the first.</span>
+      </div>
+      <div class="desk-canvas" id="deskCanvas">
+        <svg class="wires" id="wires" aria-hidden="true"><defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1.5 9 5 1 8.5z" fill="currentColor"/></marker>
+        </defs></svg>
+        <div class="desk-empty" id="deskEmpty"><h2>Your desk</h2><p>Open several chats side by side. Minimize one into a sticky note. Link two of them and Kacy will understand both together.</p></div>
+        <div class="tray" id="tray"></div>
       </div>
     </section>
 

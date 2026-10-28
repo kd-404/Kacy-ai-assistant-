@@ -11,8 +11,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
-from app import actions, chats, db, executors
+from app import actions, chats, db, desk, executors
 from app.agents_catalog import AGENTS
+from app.guardrails.prompt_shields import check_retrieved_content
 from app.identity.rbac import AccessDenied
 from app.web import _require_app_header, current_user
 
@@ -26,6 +27,26 @@ router = APIRouter(prefix="/api")
 class ChatPatch(BaseModel):
     pinned: bool | None = None
     title: str | None = None
+
+
+class DeskGeom(BaseModel):
+    open: bool = True
+    min: bool = False
+    x: float = 0
+    y: float = 0
+    w: float = 520
+    h: float = 560
+    z: int = 1
+
+
+class LinkBody(BaseModel):
+    a: str
+    b: str
+    two_way: bool = False
+
+
+class LinkPatch(BaseModel):
+    two_way: bool
 
 
 class SettingsBody(BaseModel):
@@ -157,3 +178,69 @@ def discard_action(action_id: int, request: Request, x_kacy: str | None = Header
         raise HTTPException(status_code=409, detail="already handled")
     actions.set_status(action_id, "discarded", {"message": "Discarded."})
     return actions.public(actions.get(owner, action_id))
+
+
+# ---------- Desk ----------
+
+@router.get("/desk")
+def desk_state(request: Request) -> dict:
+    owner, _ = current_user(request)
+    return {"windows": chats.desk_chats(owner), "links": chats.list_links(owner)}
+
+
+@router.put("/desk/{chat_id}")
+def desk_put(chat_id: str, body: DeskGeom, request: Request, x_kacy: str | None = Header(default=None)) -> dict:
+    _require_app_header(x_kacy)
+    owner, _ = current_user(request)
+    if not chats.set_desk(owner, chat_id, body.model_dump()):
+        raise HTTPException(status_code=404, detail="no such chat")
+    return {"ok": True}
+
+
+@router.post("/links")
+def link_create(body: LinkBody, request: Request, x_kacy: str | None = Header(default=None)) -> dict:
+    _require_app_header(x_kacy)
+    owner, _ = current_user(request)
+    try:
+        link = chats.add_link(owner, body.a, body.b, body.two_way)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="no such chat")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    for cid in (body.a, body.b):  # older chats get their first brief now, so the link has something to carry
+        desk.ensure_brief(owner, cid)
+    return link
+
+
+@router.patch("/links/{link_id}")
+def link_patch(link_id: str, body: LinkPatch, request: Request, x_kacy: str | None = Header(default=None)) -> dict:
+    _require_app_header(x_kacy)
+    owner, _ = current_user(request)
+    if not chats.update_link(owner, link_id, body.two_way):
+        raise HTTPException(status_code=404, detail="no such link")
+    return {"ok": True}
+
+
+@router.delete("/links/{link_id}")
+def link_delete(link_id: str, request: Request, x_kacy: str | None = Header(default=None)) -> dict:
+    _require_app_header(x_kacy)
+    owner, _ = current_user(request)
+    if not chats.remove_link(owner, link_id):
+        raise HTTPException(status_code=404, detail="no such link")
+    return {"ok": True}
+
+
+@router.post("/links/{link_id}/relationship")
+def link_relationship(link_id: str, request: Request, x_kacy: str | None = Header(default=None)) -> dict:
+    _require_app_header(x_kacy)
+    owner, _ = current_user(request)
+    link = chats.get_link(owner, link_id)
+    a = chats.get_chat(owner, link["a"]) if link else None
+    b = chats.get_chat(owner, link["b"]) if link else None
+    if not (a and b):
+        raise HTTPException(status_code=404, detail="no such link")
+    try:  # briefs can carry email/document text, so they get the same scan as any external text
+        check_retrieved_content([a["brief"], b["brief"]])
+    except Exception:  # noqa: BLE001 - attack found or scanner down: do not feed them to the model
+        raise HTTPException(status_code=422, detail="One of these summaries failed the safety scan, so Kacy won't compare them.")
+    return desk.relationship(a["title"], a["brief"], b["title"], b["brief"])

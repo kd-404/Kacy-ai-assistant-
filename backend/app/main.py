@@ -20,12 +20,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import actions, chats, timeutil
+from app import actions, chats, desk, timeutil
 from app.agent.client import ContentFiltered, KacyAgent
 from app.agents_catalog import build_context, get_agent
 from app.api import router as api_router
 from app.cost import semantic_cache
-from app.guardrails.prompt_shields import PromptInjectionDetected, check_user_message
+from app.guardrails.prompt_shields import PromptInjectionDetected, check_retrieved_content, check_user_message
 from app.identity.rbac import AccessDenied, role_for
 from app.web import current_user, router as web_router
 
@@ -45,6 +45,7 @@ app.include_router(web_router)
 app.include_router(api_router)
 
 _agent = KacyAgent()
+desk.completer = _agent.complete  # Desk's small model jobs (briefs, relationship) use the same deployment
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
@@ -63,6 +64,7 @@ class ChatRequest(BaseModel):
     chat_id: str | None = None      # our chat id (sidebar entry); None starts a new chat
     agent: str | None = None        # which agent preset, for a new chat
     regenerate: bool = False        # answer the last question again
+    on_desk: bool = False           # chat was started from a Desk window
 
 
 class ChatResponse(BaseModel):
@@ -132,11 +134,13 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
     agent_id = chat_row["agent"] if chat_row else get_agent(req.agent)["id"]
     context = build_context(agent_id, chats.get_settings(user_email))  # personal style/focus only
-    prefix = f"<context>\n{_date_line()}\n</context>\n\n" + context
+    # Desk: summaries of chats linked to this one. They are personal, so they also turn the cache off.
+    linked, linked_notes = desk.linked_context(user_email, chat_row["id"] if chat_row else None, check_retrieved_content)
+    prefix = f"<context>\n{_date_line()}\n</context>\n\n" + context + linked
 
     # 2) Semantic cache. Shared across users, so it is only used when nothing about
     #    the answer depends on this user's agent or personal instructions.
-    cached = None if context else semantic_cache.get(message)
+    cached = None if (context or linked) else semantic_cache.get(message)
     actions_before = {a["id"] for a in actions.pending_for(user_email)}
 
     result: dict | None = None
@@ -169,9 +173,12 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
         # Only cache answers that involved no tools and no personal context. A tool answer is
         # personal ("you have 12 days left") or has side effects (a draft was created).
-        if not result["tools_called"] and not context:
+        if not result["tools_called"] and not context and not linked:
             semantic_cache.set(message, reply)
 
+    if linked_notes:
+        steps.append(_step("linked", "Linked chats", ". ".join(linked_notes),
+                           "ok" if linked else "skipped"))
     for call in tool_trace:
         detail = "Denied by role check" if call["denied"] else f"Ran as {role}"
         if call["notes"]:
@@ -190,6 +197,8 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
     if chat_row is None:
         chat_id = chats.create_chat(user_email, message, agent_id)
         title = chats.get_chat(user_email, chat_id)["title"]
+        if req.on_desk:
+            chats.set_desk(user_email, chat_id, {"open": True})  # the client sends the real layout right after
     else:
         chat_id, title = chat_row["id"], chat_row["title"]
     if result is not None and not (chat_row and chat_row["conversation"]):
@@ -200,6 +209,10 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
     activity = {"steps": steps, "ms": ms}
     chats.add_message(user_email, chat_id, "assistant", reply,
                       {"activity": activity, "action_ids": [a["id"] for a in new_actions]})
+    # Keep the brief fresh only where something reads it (a linked chat or one on the Desk), to save a model call.
+    row = chats.get_chat(user_email, chat_id)
+    if row and (chats.has_links(user_email, chat_id) or row["desk"] != "{}"):
+        desk.update_brief(user_email, chat_id, message, reply)
 
     return ChatResponse(
         reply=reply,
