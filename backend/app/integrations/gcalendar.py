@@ -8,6 +8,8 @@ import uuid
 
 import httpx
 
+from app.integrations._google import check
+
 API = "https://www.googleapis.com/calendar/v3"
 
 
@@ -15,11 +17,8 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _check(resp: httpx.Response) -> dict:
-    if resp.status_code == 403:
-        raise PermissionError("Calendar permission not granted; sign out and sign in again, and allow calendar access")
-    resp.raise_for_status()
-    return resp.json()
+def _check(resp) -> dict:
+    return check(resp, "Calendar")
 
 
 def list_events(token: str, time_min_iso: str, time_max_iso: str, limit: int = 20) -> list[dict]:

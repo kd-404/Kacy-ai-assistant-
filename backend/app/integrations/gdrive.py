@@ -14,6 +14,8 @@ import uuid
 
 import httpx
 
+from app.integrations._google import check
+
 UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
 
 
@@ -57,8 +59,5 @@ def create_doc(token: str, title: str, markdown: str) -> dict:
         UPLOAD_URL, params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
         headers={"Authorization": f"Bearer {token}", "Content-Type": f"multipart/related; boundary={boundary}"},
         content=body, timeout=30)
-    if resp.status_code == 403:
-        raise PermissionError("Drive permission not granted; sign out and sign in again, and allow Drive file access")
-    resp.raise_for_status()
-    data = resp.json()
+    data = check(resp, "Drive")
     return {"id": data["id"], "link": data.get("webViewLink", "")}

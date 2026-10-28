@@ -42,7 +42,7 @@ def parse_when(text: str) -> float:
 
 
 def iso(ts: float) -> str:
-    return to_local(ts).isoformat(timespec="minutes")
+    return to_local(ts).isoformat(timespec="seconds")  # Google requires RFC 3339, which includes seconds
 
 
 def free_slots(busy: list[tuple[float, float]], duration_min: int, days_ahead: int,

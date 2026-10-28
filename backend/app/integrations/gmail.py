@@ -14,6 +14,8 @@ from email.message import EmailMessage
 
 import httpx
 
+from app.integrations._google import check
+
 SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 _EMAIL_RE = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 
@@ -34,8 +36,7 @@ def send(access_token: str, to: str, subject: str, body: str) -> dict:
         json={"raw": raw},
         timeout=15,
     )
-    resp.raise_for_status()
-    return resp.json()  # contains the Gmail message id
+    return check(resp, "Gmail")  # contains the Gmail message id
 
 
 # ---------- reading (needs the gmail.readonly scope) ----------
@@ -45,10 +46,7 @@ API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 def _get(access_token: str, path: str, params: dict) -> dict:
     resp = httpx.get(f"{API}/{path}", headers={"Authorization": f"Bearer {access_token}"}, params=params, timeout=15)
-    if resp.status_code == 403:
-        raise PermissionError("Gmail read permission not granted; sign out and sign in again, and allow inbox access")
-    resp.raise_for_status()
-    return resp.json()
+    return check(resp, "Gmail")
 
 
 def _header(msg: dict, name: str) -> str:

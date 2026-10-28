@@ -415,5 +415,27 @@ class LiveGoogle(unittest.TestCase):
         self.assertTrue(out["simulated"])
 
 
+class GoogleErrors(unittest.TestCase):
+    def test_timestamps_sent_to_google_are_rfc3339_with_seconds(self):
+        import re
+        stamp = timeutil.iso(timeutil.parse_when("2030-01-07T10:00"))
+        self.assertRegex(stamp, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$")
+
+    def test_real_cause_is_reported(self):
+        from app.integrations._google import check
+        disabled = _Resp({"error": {"code": 403, "message": "Google Calendar API has not been used in project 1 before or it is disabled.",
+                                    "errors": [{"reason": "accessNotConfigured"}]}}, 403)
+        with self.assertRaisesRegex(PermissionError, "not enabled"):
+            check(disabled, "Calendar")
+        scope = _Resp({"error": {"code": 403, "message": "Request had insufficient authentication scopes.",
+                                 "status": "PERMISSION_DENIED"}}, 403)
+        with self.assertRaisesRegex(PermissionError, "not granted"):
+            check(scope, "Calendar")
+        with self.assertRaisesRegex(ValueError, "Invalid value for: timeMin"):
+            check(_Resp({"error": {"message": "Invalid value for: timeMin"}}, 400), "Calendar")
+        with self.assertRaisesRegex(PermissionError, "expired"):
+            check(_Resp({}, 401), "Gmail")
+
+
 if __name__ == "__main__":
     unittest.main()
