@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from app import actions, chats, desk, timeutil
 from app.agent.client import ContentFiltered, KacyAgent
-from app.agents_catalog import build_context, get_agent
+from app.agents_catalog import allowed_tools, build_context, get_agent
 from app.api import router as api_router
 from app.cost import semantic_cache
 from app.guardrails.prompt_shields import PromptInjectionDetected, check_retrieved_content, check_user_message
@@ -154,7 +154,8 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
         seed = chats.messages(user_email, chat_row["id"]) if chat_row and not conversation else None
         try:
             result = _agent.run(
-                prefix + message, user_email=user_email, thread_id=conversation, seed_history=seed, session=session
+                prefix + message, user_email=user_email, thread_id=conversation, seed_history=seed, session=session,
+                allowed_tools=allowed_tools(agent_id),
             )
         except AccessDenied as exc:
             logger.info("chat.access_denied resource=%s role=%s", exc.resource, exc.role)

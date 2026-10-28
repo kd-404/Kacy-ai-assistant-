@@ -616,7 +616,10 @@ function renderAgents() {
   grid.textContent = "";
   for (const a of state.agents) {
     const card = el("button", "agent-card");
-    card.append(el("span", "initial", a.name[0]), el("b", null, a.name), el("span", null, a.blurb));
+    const badge = el("span", "initial"); badge.append(icon(a.icon || "agents"));
+    const can = el("ul", "can");
+    for (const t of a.can || []) can.append(el("li", null, t));
+    card.append(badge, el("b", null, a.name), el("span", null, a.blurb), can);
     card.onclick = () => newChat(a.id);
     grid.append(card);
   }

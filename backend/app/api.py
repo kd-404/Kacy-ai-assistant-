@@ -57,7 +57,7 @@ class SettingsBody(BaseModel):
 
 @router.get("/agents")
 def agents() -> list[dict]:
-    return [{k: a[k] for k in ("id", "name", "blurb", "starters")} for a in AGENTS]
+    return [{k: a[k] for k in ("id", "name", "icon", "blurb", "can", "starters")} for a in AGENTS]
 
 
 @router.get("/chats")

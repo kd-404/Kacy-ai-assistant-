@@ -128,6 +128,7 @@ class KacyAgent:
         thread_id: str | None = None,
         seed_history: list[dict] | None = None,
         session=None,
+        allowed_tools: frozenset[str] | None = None,
     ) -> dict:
         """
         Send one message, return the agent's reply plus the conversation id so
@@ -161,7 +162,7 @@ class KacyAgent:
 
             outputs = []
             for call in calls:
-                output, denied, notes = dispatch(call.name, call.arguments, user_email, session)
+                output, denied, notes = dispatch(call.name, call.arguments, user_email, session, allowed_tools)
                 tools_called.append(call.name)
                 tool_trace.append({"name": call.name, "denied": denied, "notes": notes})
                 access_denied = access_denied or denied

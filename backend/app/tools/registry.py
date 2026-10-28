@@ -39,6 +39,7 @@ from app.tools.mcp_docs.server import draft_document, list_documents, read_docum
 from app.tools.mcp_email.server import draft_email, read_email, search_inbox
 from app.tools.mcp_hr.server import get_leave_balance, get_salary
 from app.tools.mcp_it_ticket.server import open_it_ticket
+from app.tools.mcp_repo.server import read_repo_file, repo_overview
 
 logger = logging.getLogger("kacy.tools")
 
@@ -113,6 +114,13 @@ TOOL_SPECS: list[dict] = [
           "Prepare an IT helpdesk ticket. The user sees a card and confirms before it is opened.",
           {"summary": _STR, "details": _STR,
            "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]}}),
+    # --- GitHub (read-only, public repos) ---
+    _spec("repo_overview",
+          "Look at a public GitHub repository: description, top-level files and the README. Read-only; nothing is cloned or run.",
+          {"repo": {"type": "string", "description": "owner/name or a github.com link."}}, external=True),
+    _spec("read_repo_file", "Read one text file (or list one folder) in a public GitHub repository.",
+          {"repo": {"type": "string", "description": "owner/name or a github.com link."},
+           "path": {"type": "string", "description": "Path inside the repo, e.g. src/main.py"}}, external=True),
     # --- brief ---
     _spec("get_morning_brief",
           "Gather today's meetings, unread email, approvals waiting, open requests and drafts waiting, in one call.",
@@ -128,6 +136,7 @@ _HANDLERS: dict[str, Callable[..., dict]] = {
     "request_leave": request_leave, "list_pending_approvals": list_pending_approvals,
     "decide_leave_request": decide_leave_request, "list_my_requests": list_my_requests,
     "open_it_ticket": open_it_ticket, "get_morning_brief": get_morning_brief,
+    "repo_overview": repo_overview, "read_repo_file": read_repo_file,
 }
 _SPEC_BY_NAME = {s["name"]: s for s in TOOL_SPECS}
 
@@ -161,9 +170,12 @@ def _shield(result: dict) -> bool:
     return False
 
 
-def dispatch(name: str, arguments_json: str, user_email: str, session=None) -> tuple[str, bool, list[str]]:
+def dispatch(name: str, arguments_json: str, user_email: str, session=None,
+             allowed: frozenset[str] | None = None) -> tuple[str, bool, list[str]]:
     """
     Run one tool call for `user_email`. Returns (output_json, was_denied, notes).
+    `allowed` is the calling agent's tool list (None = every tool). A call outside it is refused here,
+    in code, no matter what the model was told.
     Denials are returned as data so the model can explain them politely; the
     protected value itself is never put in the output. `notes` are human-readable
     facts about guardrails that ran, shown in the UI's activity pane.
@@ -171,6 +183,9 @@ def dispatch(name: str, arguments_json: str, user_email: str, session=None) -> t
     handler = _HANDLERS.get(name)
     if handler is None:
         return json.dumps({"error": f"unknown tool {name}"}), False, []
+    if allowed is not None and name not in allowed:
+        return json.dumps({"error": "This agent can't use that tool. Tell the user to switch to Kacy or the agent built for it."}), \
+            False, ["Blocked: not in this agent's tool list"]
 
     try:
         args = json.loads(arguments_json or "{}")

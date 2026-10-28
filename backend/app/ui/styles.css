@@ -10,27 +10,27 @@
   --muted: #a3a3ad;
   --faint: #73737e;
   --line: #2f2f36;
-  --thread: #a597ff;          /* brand violet: links, completed steps */
-  --thread-soft: #2a2650;
-  --on-thread: #14122b;
+  --thread: #a095d4;          /* muted violet: links, completed steps */
+  --thread-soft: #2b2a3b;
+  --on-thread: #17151f;
   --lamp: #f0b43c;            /* attention: something waits for a human */
   --lamp-soft: #34290f;
   --ok: #46c490;
   --danger: #ff7a7a;
   --danger-soft: #3a1d24;
-  --glow: linear-gradient(135deg, #7c6cff 0%, #d86fd0 55%, #f2a35e 100%);
+  --glow: #8b80c4;            /* solid, calm accent fill for the logo mark and send button */
   --shadow: 0 1px 2px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.35);
   --sb: 272px;
   --pane: 320px;
-  --font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;   /* UI text */
+  --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;   /* answers, headings, titles */
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
   --side: #f2f2f5; --bg: #fafafb; --surface: #ffffff; --raised: #ebebf0; --sunken: #f0f0f4;
   --text: #19191f; --muted: #5f5f6b; --faint: #8e8e9a; --line: #e2e2e9;
-  --thread: #5b4bdb; --thread-soft: #ebe8ff; --on-thread: #ffffff;
+  --thread: #6a5fb0; --thread-soft: #efedf8; --on-thread: #ffffff; --glow: #6a5fb0;
   --lamp: #a96b00; --lamp-soft: #fff1d3; --ok: #168a5d; --danger: #c93a3a; --danger-soft: #fdeaea;
   --shadow: 0 1px 2px rgba(25,25,31,.06), 0 12px 32px rgba(25,25,31,.08);
   color-scheme: light;
@@ -68,7 +68,7 @@ kbd { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--line)
 .sb-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 10px 6px 16px; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
 .mark { width: 28px; height: 28px; border-radius: 9px; background: var(--glow); display: grid; place-items: center; }
-.mark svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
+.mark svg { width: 20px; height: 20px; fill: none; stroke: var(--on-thread); stroke-width: 2.6; stroke-linecap: round; }
 .new-chat { margin: 10px 10px 4px; height: 42px; border-radius: 12px; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-weight: 600; background: var(--raised); color: var(--text); }
 .new-chat:hover { background: color-mix(in srgb, var(--raised) 80%, var(--text) 20%); }
 .new-chat .ic { color: var(--thread); }
@@ -132,7 +132,7 @@ kbd { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--line)
 .msg.user { justify-content: flex-end; }
 .msg.user .bubble { background: var(--raised); padding: 10px 16px; border-radius: 20px 20px 6px 20px; max-width: 82%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.kacy .face { width: 28px; height: 28px; border-radius: 9px; background: var(--glow); flex: none; display: grid; place-items: center; margin-top: 3px; }
-.msg.kacy .face svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
+.msg.kacy .face svg { width: 18px; height: 18px; fill: none; stroke: var(--on-thread); stroke-width: 2.6; stroke-linecap: round; }
 .msg.kacy .body { flex: 1; min-width: 0; }
 .prose { overflow-wrap: anywhere; font: 400 16.5px/1.7 var(--serif); }
 .prose > :first-child { margin-top: 0; } .prose > :last-child { margin-bottom: 0; }
@@ -194,7 +194,7 @@ kbd { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--line)
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 99px; color: var(--muted); font-size: 13.5px; background: var(--raised); }
 .pill:hover { color: var(--text); }
 .pill:disabled { opacity: .6; cursor: default; }
-.send { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--glow); color: #fff; }
+.send { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--glow); color: var(--on-thread); }
 .send:hover { filter: brightness(1.1); }
 .send:disabled { background: var(--raised); color: var(--faint); cursor: default; filter: none; }
 .fine { margin: 9px 0 0; text-align: center; font-size: 12.5px; color: var(--faint); }
@@ -207,6 +207,9 @@ kbd { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--line)
 .agent-card { text-align: left; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); display: grid; gap: 6px; align-content: start; }
 .agent-card:hover { border-color: var(--thread); }
 .agent-card b { font-size: 16px; } .agent-card span { color: var(--muted); font-size: 14px; }
+.agent-card .can { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; color: var(--faint); }
+.agent-card .can li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 8px; border-radius: 50%; background: var(--thread); vertical-align: middle; }
+.agent-card { font-family: var(--font); } .agent-card b { font-family: var(--serif); font-weight: 600; }
 .agent-card .initial { width: 34px; height: 34px; border-radius: 10px; background: var(--thread-soft); color: var(--thread); display: grid; place-items: center; font-weight: 700; margin-bottom: 4px; }
 
 /* ---------- activity pane: the thread ---------- */
@@ -323,7 +326,7 @@ dialog textarea { resize: vertical; }
 .dcomposer { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: var(--surface); }
 .dcomposer textarea { flex: 1; resize: none; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; color: var(--text); font: 14.5px/1.4 var(--font); outline: 0; max-height: 120px; }
 .dcomposer textarea:focus { border-color: var(--thread); }
-.dcomposer .send { width: 36px; height: 36px; border-radius: 50%; background: var(--glow); color: #fff; display: grid; place-items: center; flex: none; }
+.dcomposer .send { width: 36px; height: 36px; border-radius: 50%; background: var(--glow); color: var(--on-thread); display: grid; place-items: center; flex: none; }
 
 .tray { position: absolute; right: 14px; bottom: 14px; z-index: 80000; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 12px; max-width: min(520px, 70%); pointer-events: none; }
 .sticky { pointer-events: auto; position: relative; width: 158px; min-height: 108px; padding: 12px 13px; border-radius: 4px 4px 18px 4px; color: #2a2236; background: #f7dc7a;
