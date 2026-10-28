@@ -245,23 +245,37 @@ function renderThread({ keepScroll = false } = {}) {
   $("agentPickName").textContent = agentName(a);
   $("agentPick").disabled = !!c.id;
 
-  if (!c.messages.length) {
+  const empty = !c.messages.length;
+  $("viewChat").classList.toggle("is-empty", empty);
+  const starters = $("starters");
+  starters.textContent = "";
+  if (empty) {
     const hello = el("div", "hello");
-    hello.append(el("h2", null, greeting()), el("p", null, "Ask about company policy, check your leave, or hand me an email to draft. I'll ask before anything leaves the building."));
-    const starters = el("div", "starters");
+    const mark = el("span", "mark");
+    mark.innerHTML = '<svg viewBox="0 0 32 32"><path d="M9 8v16M9 16c5 0 7-4 14-8M9 16c5 0 7 4 14 8"/></svg>';
+    hello.append(mark, el("h2", null, greeting()), el("p", null, "Ask about company policy, your calendar or inbox, or hand me something to draft. I'll ask before anything leaves the building."));
+    thread.append(hello);
     const agent = state.agents.find((x) => x.id === a);
-    for (const s of (agent ? agent.starters : []).slice(0, 4)) {
-      const b = el("button", "starter", s);
-      b.onclick = () => send(s);
+    for (const text of (agent ? agent.starters : []).slice(0, 4)) {
+      const b = el("button", "starter");
+      b.append(icon(starterIcon(text)), document.createTextNode(text));
+      b.onclick = () => send(text);
       starters.append(b);
     }
-    hello.append(starters);
-    thread.append(hello);
   }
 
   c.messages.forEach((m, idx) => thread.append(messageNode(m, idx === c.messages.length - 1)));
   if (state.busy) thread.append(workingNode());
   if (keepScroll) scroller.scrollTop = before; else scrollToEnd();
+}
+
+function starterIcon(text) {
+  const t = text.toLowerCase();
+  if (/email|inbox|reply|mail/.test(t)) return "mail";
+  if (/slot|schedule|meeting|calendar|brief/.test(t)) return "calendar";
+  if (/document|draft a|plan/.test(t)) return "doc";
+  if (/ticket|vpn|access|laptop/.test(t)) return "ticket";
+  return "check";
 }
 
 function scrollToEnd() { const s = $("scroll"); s.scrollTop = s.scrollHeight; }
@@ -654,7 +668,7 @@ async function showGate() {
 }
 
 async function boot() {
-  applyTheme(store("kacy-theme") || "auto");
+  applyTheme(store("kacy-theme") || "dark");
   const me = await api("/me");
   if (!me.ok || !me.data.signed_in) return showGate();
   state.me = me.data;
