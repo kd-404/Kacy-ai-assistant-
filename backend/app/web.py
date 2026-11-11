@@ -17,6 +17,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+from app import limits
 from app.identity import google_oauth
 from app.identity.google_oauth import SESSION_COOKIE, Session
 from app.identity.rbac import DEMO_USERS, AccessDenied, is_demo_user, role_for
@@ -83,9 +84,13 @@ class DemoLogin(BaseModel):
 
 
 @router.post("/auth/demo")
-def demo_login(body: DemoLogin, x_kacy: str | None = Header(default=None)):
+def demo_login(body: DemoLogin, request: Request, x_kacy: str | None = Header(default=None)):
     """Sign in as one of the four demo people. No Google involved, and no Google access either."""
     _require_app_header(x_kacy)
+    try:
+        limits.check_demo_login(limits.visitor_id(request))
+    except limits.LimitError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     email = f"{body.persona.lower()}@kacy-demo.test"
     if email not in DEMO_USERS:
         raise HTTPException(status_code=404, detail="no such demo account")

@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import actions, chats, desk, timeutil
+from app import actions, chats, desk, limits, timeutil
 from app.agent.client import ContentFiltered, KacyAgent
 from app.agents_catalog import allowed_tools, build_context, get_agent
 from app.api import router as api_router
@@ -33,7 +33,9 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("kacy")
 
-app = FastAPI(title="Kacy API")
+_PROD = os.environ.get("ENVIRONMENT", "dev") != "dev"
+# In production the API docs page is not exposed to the public.
+app = FastAPI(title="Kacy API", docs_url=None if _PROD else "/docs", redoc_url=None, openapi_url=None if _PROD else "/openapi.json")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -97,6 +99,11 @@ def _step(id_: str, label: str, detail: str, status: str = "ok") -> dict:
 def chat(req: ChatRequest, request: Request) -> ChatResponse:
     started = time.perf_counter()
     user_email, session = current_user(request, req.user_email)
+    if session is not None and session.demo:
+        try:
+            limits.check_demo_message(limits.visitor_id(request))  # public demo: bounded cost
+        except limits.LimitError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     try:
         role = role_for(user_email).value
     except AccessDenied:

@@ -1,0 +1,55 @@
+name: build-and-deploy
+
+# Builds the image, publishes it to GitHub's container registry, then rolls the live app to it.
+# Runs only after the unit tests and eval gate pass on main.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["backend/**"]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r backend/requirements.txt
+      - run: python -m unittest discover -s tests
+        working-directory: backend
+      - run: python -m app.eval.run_eval
+        working-directory: backend
+      - id: meta
+        run: echo "tag=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kacy:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ${{ steps.meta.outputs.tag }},ghcr.io/${{ github.repository_owner }}/kacy:latest
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    # Skipped until you add the three Azure secrets (see DEPLOY.md, "Automatic deploys").
+    if: ${{ vars.AZURE_DEPLOY == 'true' }}
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az containerapp update -n kacy-app -g "${{ vars.AZURE_RESOURCE_GROUP }}" --image "${{ needs.image.outputs.tag }}"

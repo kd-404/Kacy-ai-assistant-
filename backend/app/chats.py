@@ -83,7 +83,7 @@ class _Conn(sqlite3.Connection):
 
 def _connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, factory=_Conn)
+    conn = sqlite3.connect(DB_PATH, factory=_Conn, timeout=30)  # wait for the lock instead of failing (network share)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_SCHEMA)
