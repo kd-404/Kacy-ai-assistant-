@@ -55,12 +55,36 @@ def is_demo_user(user_email: str) -> bool:
     return user_email.lower() in DEMO_USERS
 
 
+def _default_role() -> Role | None:
+    """
+    Optional open sign-in: KACY_DEFAULT_ROLE=employee lets any Google account in at that role.
+    Accounts listed in KACY_USER_ROLES (and the demo personas) keep their own role.
+    Leave it unset to keep Kacy closed to everyone who is not listed.
+    """
+    raw = os.environ.get("KACY_DEFAULT_ROLE", "").strip().lower()
+    if not raw:
+        return None
+    role = Role(raw)
+    if role in (Role.MANAGER, Role.EXEC):
+        raise ValueError("KACY_DEFAULT_ROLE must be intern or employee, never manager or exec")
+    return role
+
+
+def is_open_user(user_email: str) -> bool:
+    """A signed-in person who has no listed role and got the default one."""
+    email = user_email.lower()
+    return email not in {**DEMO_USERS, **_configured_users()} and _default_role() is not None
+
+
 def role_for(user_email: str) -> Role:
     users = {**DEMO_USERS, **_configured_users()}
     email = user_email.lower()
-    if email not in users:
+    if email in users:
+        return users[email]
+    default = _default_role()
+    if default is None:
         raise AccessDenied("unknown user", Role.INTERN)
-    return users[email]
+    return default
 
 
 def require_role(user_email: str, resource: str, allowed: set[Role]) -> None:

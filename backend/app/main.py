@@ -26,7 +26,7 @@ from app.agents_catalog import allowed_tools, build_context, get_agent
 from app.api import router as api_router
 from app.cost import semantic_cache
 from app.guardrails.prompt_shields import PromptInjectionDetected, check_retrieved_content, check_user_message
-from app.identity.rbac import AccessDenied, role_for
+from app.identity.rbac import AccessDenied, is_open_user, role_for
 from app.web import current_user, router as web_router
 
 load_dotenv()
@@ -99,7 +99,7 @@ def _step(id_: str, label: str, detail: str, status: str = "ok") -> dict:
 def chat(req: ChatRequest, request: Request) -> ChatResponse:
     started = time.perf_counter()
     user_email, session = current_user(request, req.user_email)
-    if session is not None and session.demo:
+    if session is not None and (session.demo or is_open_user(session.email)):
         try:
             limits.check_demo_message(limits.visitor_id(request))  # public demo: bounded cost
         except limits.LimitError as exc:

@@ -60,3 +60,37 @@ class DemoLimits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenSignIn(unittest.TestCase):
+    def setUp(self):
+        import os
+        os.environ.pop("KACY_DEFAULT_ROLE", None)
+        os.environ["KACY_USER_ROLES"] = "boss@example.com=exec"
+
+    def tearDown(self):
+        import os
+        os.environ.pop("KACY_DEFAULT_ROLE", None)
+        os.environ.pop("KACY_USER_ROLES", None)
+
+    def test_closed_by_default(self):
+        from app.identity.rbac import AccessDenied, role_for
+        with self.assertRaises(AccessDenied):
+            role_for("stranger@gmail.com")
+
+    def test_open_gives_employee_but_keeps_listed_roles(self):
+        import os
+        from app.identity.rbac import Role, is_open_user, role_for
+        os.environ["KACY_DEFAULT_ROLE"] = "employee"
+        self.assertEqual(role_for("stranger@gmail.com"), Role.EMPLOYEE)
+        self.assertTrue(is_open_user("stranger@gmail.com"))
+        self.assertEqual(role_for("boss@example.com"), Role.EXEC)
+        self.assertFalse(is_open_user("boss@example.com"))
+        self.assertFalse(is_open_user("alice@kacy-demo.test"))
+
+    def test_default_can_never_be_manager_or_exec(self):
+        import os
+        from app.identity.rbac import role_for
+        os.environ["KACY_DEFAULT_ROLE"] = "exec"
+        with self.assertRaises(ValueError):
+            role_for("stranger@gmail.com")
